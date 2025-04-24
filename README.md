@@ -31,4 +31,5 @@ The following is a description from the original repo :
 This project is licensed under the MIT License.  
 Original work © [Lauri Nevala](https://github.com/nevalla)  
 Freelens adaptation and initial update © 2025 [Yasmine Gharbi](https://github.com/GHARBIyasmine)
+
 Maintained collaboratively under the [Freelens](https://github.com/freelensapp) organization.
