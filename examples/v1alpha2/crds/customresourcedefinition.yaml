@@ -1,0 +1,87 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: examples.example.freelens.app
+spec:
+  group: example.freelens.app
+  names:
+    plural: examples
+    singular: example
+    kind: Example
+    shortNames:
+      - ex
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                active:
+                  type: boolean
+                otherExamples:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+      additionalPrinterColumns:
+        - name: Title
+          type: string
+          jsonPath: .spec.title
+          description: A title of the resource
+        - name: Active
+          type: boolean
+          jsonPath: .spec.active
+          description: A flag if resource is active
+    - name: v1alpha2
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                suspended:
+                  type: boolean
+                  default: false
+                otherExamples:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+      additionalPrinterColumns:
+        - name: Title
+          type: string
+          jsonPath: .spec.title
+          description: A title of the resource
+        - name: Suspended
+          type: boolean
+          jsonPath: .spec.suspended
+          description: Indicates if the resource is suspended
