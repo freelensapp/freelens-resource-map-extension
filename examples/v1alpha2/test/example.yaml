@@ -1,0 +1,15 @@
+apiVersion: example.freelens.app/v1alpha2
+kind: Example
+metadata:
+  name: test
+spec:
+  title: Test
+  suspended: false
+  description: |-
+    Test of CRD provided for example extension for
+    [Freelens](https://freelens.app).
+
+    It is used to check how the resource is presented in Freelens application:
+
+    - List of custom resources
+    - Detailed page for custom resource

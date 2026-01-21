@@ -1,0 +1,661 @@
+# Freelens Example Extension
+
+> Reference implementation for building Kubernetes cluster management extensions for Freelens (OpenLens fork)
+
+## Purpose
+
+This repository demonstrates how to create, build, and publish extensions for the Freelens Kubernetes management platform. It showcases key patterns including multi-version CRD support, React/MobX-based UI components, and the extension lifecycle.
+
+**Version:** 1.6.2
+**Repository:** https://github.com/freelensapp/freelens-example-extension
+**Package:** `@freelensapp/example-extension`
+
+---
+
+## Architecture Overview
+
+### Extension System
+
+Freelens extensions use **Electron's dual-process architecture**:
+
+```
+┌─────────────────────────────────────────┐
+│         Freelens Host Application       │
+│   (provides React, MobX, Extension API) │
+└─────────────────┬───────────────────────┘
+                  │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+┌──────────────┐    ┌──────────────┐
+│ Main Process │    │Renderer Proc │
+│  (Node.js)   │    │  (React UI)  │
+├──────────────┤    ├──────────────┤
+│ - Backend    │    │ - Components │
+│ - Lifecycle  │    │ - K8s Views  │
+│ - Stores     │    │ - Menus      │
+└──────────────┘    └──────────────┘
+```
+
+### Entry Points
+
+1. **Main Process** (`src/main/index.ts`)
+   - Extends `Main.LensExtension`
+   - Initializes shared stores
+   - Access to Node.js APIs
+
+2. **Renderer Process** (`src/renderer/index.tsx`)
+   - Extends `Renderer.LensExtension`
+   - Registers UI components
+   - React-based user interface
+
+### Extension Registration Points
+
+Extensions integrate with Freelens via declarative properties:
+
+| Property | Purpose | Example |
+|----------|---------|---------|
+| `appPreferences` | Settings UI | Checkbox in preferences |
+| `kubeObjectDetailItems` | Detail panels | Custom resource details |
+| `clusterPages` | Navigation pages | List view in cluster sidebar |
+| `clusterPageMenus` | Menu items | Icon/link in navigation |
+| `kubeObjectMenuItems` | Context menus | Right-click actions on resources |
+
+---
+
+## Project Structure
+
+```
+src/
+├── main/                    # Main process (Node.js context)
+│   └── index.ts            # ExampleMain class
+├── renderer/               # Renderer process (React UI)
+│   ├── index.tsx           # ExampleRenderer class + registrations
+│   ├── k8s/                # Kubernetes API bindings
+│   │   ├── types.ts        # Shared types
+│   │   └── example/        # CRD models (v1alpha1, v1alpha2)
+│   ├── details/            # Detail panel components
+│   ├── pages/              # List view pages
+│   ├── menus/              # Context menu items
+│   ├── preferences/        # Settings UI
+│   ├── components/         # Reusable utilities
+│   │   ├── error-page.tsx         # Error boundary
+│   │   └── available-version.tsx  # Version detection
+│   └── icons/              # SVG icon components
+└── common/                 # Shared between processes
+    ├── store/              # MobX stores
+    └── utils.ts            # Utility functions
+```
+
+---
+
+## Key Patterns
+
+### 1. Multi-Version CRD Support
+
+The extension demonstrates backward compatibility with two API versions:
+
+```typescript
+// Version-specific models
+src/renderer/k8s/example/example-v1alpha1.ts  // spec.active
+src/renderer/k8s/example/example-v1alpha2.ts  // spec.suspended (renamed)
+
+// Version-specific UI
+src/renderer/details/example-details-v1alpha1.tsx
+src/renderer/details/example-details-v1alpha2.tsx
+src/renderer/pages/examples-page-v1alpha1.tsx
+src/renderer/pages/examples-page-v1alpha2.tsx
+```
+
+**Version Detection Pattern:**
+```typescript
+createAvailableVersionPage("Examples", [
+  { kubeObjectClass: ExampleV1alpha2, PageComponent: ExamplesPageV1alpha2, version: "v1alpha2" },
+  { kubeObjectClass: ExampleV1alpha1, PageComponent: ExamplesPageV1alpha1, version: "v1alpha1" },
+])
+```
+
+Automatically detects which CRD version is installed and falls back gracefully.
+
+### 2. Observable State Management (MobX)
+
+```typescript
+// Store definition
+class ExamplePreferencesStore extends Common.Store.ExtensionStore<ExamplePreferencesModel> {
+  @observable accessor enabled = false;
+
+  fromStore({ enabled }) { this.enabled = enabled; }
+  toJSON() { return { enabled: this.enabled }; }
+}
+
+// Singleton access
+const store = ExamplePreferencesStore.getInstanceOrCreate();
+
+// Reactive component
+const MyComponent = observer(() => {
+  const prefs = ExamplePreferencesStore.getInstanceOrCreate();
+  return <Checkbox value={prefs.enabled} onChange={v => prefs.enabled = v} />;
+});
+```
+
+**Key features:**
+- Persists to Freelens config automatically
+- Shared between main/renderer processes
+- Reactive updates via `@observable` decorator
+- Singleton pattern with `getInstanceOrCreate()`
+
+### 3. Error Boundaries
+
+```typescript
+export const MyComponent = (props: MyProps) =>
+  withErrorPage(props, () => {
+    const store = KubeObject.getStore<KubeObject>();
+    // Risky operations that might throw
+    return <KubeObjectListLayout store={store} />;
+  });
+```
+
+Wrap any component that:
+- Fetches data (kube objects, API calls)
+- Has complex rendering logic
+- Needs graceful failure handling
+
+### 4. KubeObject Integration
+
+```typescript
+// Define CRD model
+class Example extends Renderer.K8sApi.LensExtensionKubeObject<...> {
+  static readonly kind = "Example";
+  static readonly apiBase = "/apis/example.freelens.app/v1alpha1/examples";
+  static readonly crd = {
+    apiVersions: ["example.freelens.app/v1alpha1"],
+    plural: "examples",
+    title: "Examples",
+  };
+}
+
+// Auto-generated helper classes
+class ExampleApi extends Renderer.K8sApi.KubeApi<Example> {}
+class ExampleStore extends Renderer.K8sApi.KubeObjectStore<Example, ExampleApi> {}
+
+// Usage in components
+const store = Example.getStore<Example>();
+await store.patch(object, { spec: { active: true } }, "merge");
+```
+
+---
+
+## Extension API
+
+### Main Process Class
+
+```typescript
+import { Main } from "@freelensapp/extensions";
+
+export default class ExampleMain extends Main.LensExtension {
+  async onActivate() {
+    // Initialize backend logic
+    await ExamplePreferencesStore.getInstanceOrCreate().loadExtension(this);
+  }
+}
+```
+
+### Renderer Process Class
+
+```typescript
+import { Renderer } from "@freelensapp/extensions";
+
+export default class ExampleRenderer extends Renderer.LensExtension {
+  async onActivate() {
+    // Initialize UI-side stores
+    ExamplePreferencesStore.getInstanceOrCreate().loadExtension(this);
+  }
+
+  // Register components
+  appPreferences = [...];
+  kubeObjectDetailItems = [...];
+  clusterPages = [...];
+  clusterPageMenus = [...];
+  kubeObjectMenuItems = [...];
+}
+```
+
+---
+
+## Dependencies
+
+### Runtime (External - Provided by Freelens)
+
+These are **NOT bundled** with the extension:
+
+```json
+{
+  "@freelensapp/extensions": "^1.6.1",  // Extension API
+  "mobx": "6.13.7",                     // State management
+  "mobx-react": "7.6.0",                // React bindings
+  "react": "17.0.2",                    // UI framework
+  "react-dom": "17.0.2"
+}
+```
+
+### Build Time
+
+```json
+{
+  "typescript": "5.9.3",
+  "electron-vite": "^4.0.1",
+  "@vitejs/plugin-react": "^5.1.1",
+  "sass": "^1.94.1"
+}
+```
+
+---
+
+## Build Configuration
+
+### electron.vite.config.js
+
+Key settings:
+
+```javascript
+{
+  build: {
+    formats: ["cjs"],              // CommonJS for Freelens 1.x
+    rollupOptions: {
+      external: {                   // Use host-provided globals
+        "@freelensapp/extensions": "global.LensExtensions",
+        mobx: "global.Mobx",
+        react: "global.React",
+        // ...
+      }
+    }
+  },
+  main: { preserveModules: true },  // Better debugging
+  renderer: { preserveModules: true }
+}
+```
+
+**Why external dependencies?**
+- Reduces bundle size
+- Avoids version conflicts
+- Uses Freelens-provided React/MobX
+
+---
+
+## CRD API Differences
+
+### v1alpha1
+```yaml
+spec:
+  active: boolean      # Resource active?
+  title: string
+  description: string
+```
+
+### v1alpha2
+```yaml
+spec:
+  suspended: boolean   # Resource suspended? (renamed, inverted logic)
+  title: string
+  description: string
+```
+
+**Breaking change:** `active` renamed to `suspended` with inverted logic.
+
+---
+
+## Component Hierarchy
+
+### Page Component (List View)
+
+```
+KubeObjectListLayout
+  ├─ Table Header (sorting)
+  │  ├─ Name
+  │  ├─ Namespace
+  │  ├─ Active/Resumed
+  │  ├─ Title
+  │  └─ Age
+  └─ Table Contents
+     └─ Row per resource
+```
+
+### Details Component
+
+```
+ExampleDetails (observer-wrapped)
+  ├─ Error Boundary (withErrorPage)
+  └─ Drawer Items
+      ├─ Api Version
+      ├─ Description (MarkdownViewer)
+      └─ Example Checkbox (BadgeBoolean)
+```
+
+---
+
+## Development Workflow
+
+### Prerequisites
+```bash
+# Node.js version
+nvm install 22.16.0
+nvm use 22.16.0
+
+# Package manager
+corepack install
+```
+
+### Commands
+```bash
+# Install dependencies
+pnpm install
+
+# Type check
+pnpm type:check
+
+# Build
+pnpm build
+
+# Development build (preserve modules)
+pnpm build:production
+
+# Lint
+pnpm lint:check
+pnpm lint:fix
+
+# Pack for distribution
+pnpm pack
+pnpm pack:dev  # One-shot build + pack
+```
+
+### Testing Extension
+
+1. **Build extension:**
+   ```bash
+   pnpm build
+   pnpm pack
+   ```
+
+2. **Install CRD in cluster:**
+   ```bash
+   kubectl apply -f examples/crds/customresourcedefinition.yaml
+   ```
+
+3. **Install test resource:**
+   ```bash
+   kubectl apply -f examples/test/example.yaml
+   ```
+
+4. **Load extension in Freelens:**
+   - Navigate to Extensions (Ctrl+Shift+E)
+   - Drag and drop the `.tgz` file
+   - Or use URL: `freelens://app/extensions/install/%40freelensapp%2Fexample-extension`
+
+---
+
+## Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `src/main/index.ts` | Main process entry |
+| `src/renderer/index.tsx` | Renderer entry + registrations |
+| `src/common/store/preferences-store.ts` | MobX store pattern |
+| `src/renderer/k8s/example/` | KubeObject models |
+| `src/renderer/components/error-page.tsx` | Error boundary pattern |
+| `src/renderer/components/available-version.tsx` | Multi-version detection |
+| `electron.vite.config.js` | Build configuration |
+| `examples/crds/` | Kubernetes CRD manifests |
+
+---
+
+## Common Tasks
+
+### Add a New KubeObject
+
+1. **Define model** in `src/renderer/k8s/myresource/myresource-v1.ts`:
+
+```typescript
+export class MyResource extends Renderer.K8sApi.LensExtensionKubeObject<...> {
+  static readonly kind = "MyResource";
+  static readonly apiBase = "/apis/mygroup.com/v1/myresources";
+  static readonly crd = {
+    apiVersions: ["mygroup.com/v1"],
+    plural: "myresources",
+    title: "My Resources",
+  };
+}
+```
+
+2. **Register** in `src/renderer/index.tsx`:
+
+```typescript
+kubeObjectDetailItems = [{
+  kind: MyResource.kind,
+  apiVersions: MyResource.crd.apiVersions,
+  components: {
+    Details: (props) => <MyDetails {...props} />
+  },
+}];
+```
+
+### Add a Menu Item
+
+```typescript
+kubeObjectMenuItems = [{
+  kind: Example.kind,
+  apiVersions: Example.crd.apiVersions,
+  components: {
+    MenuItem: (props) => <MyMenuItem {...props} extension={this} />
+  },
+}];
+```
+
+### Access Extension Preferences
+
+```typescript
+import { ExamplePreferencesStore } from "../../common/store";
+
+const prefs = ExamplePreferencesStore.getInstanceOrCreate();
+console.log(prefs.enabled);  // Read
+prefs.enabled = true;         // Write (auto-saves)
+```
+
+---
+
+## Type Safety
+
+All components use TypeScript with exported interfaces:
+
+```typescript
+// Props interfaces
+interface ExampleDetailsProps extends Renderer.Component.KubeObjectDetailsProps<Example> {
+  extension: Renderer.LensExtension;
+}
+
+// KubeObject types
+interface ExampleSpec {
+  title?: string;
+  active?: boolean;
+  description?: string;
+}
+
+type ExampleStatus = {};
+```
+
+---
+
+## Error Handling Pattern
+
+```typescript
+import { withErrorPage } from "../components/error-page";
+
+export const MyComponent = (props: MyProps) =>
+  withErrorPage(props, () => {
+    // Code that might throw
+    const object = props.object;  // May throw if not loaded
+    return <div>{object.getName()}</div>;
+  });
+```
+
+**When to use:**
+- Components that fetch data
+- Components accessing kube objects
+- Any component where failures should be graceful
+
+**When NOT to use:**
+- Simple presentational components
+- Components already wrapped in error boundaries
+
+---
+
+## Styling
+
+Uses **CSS Modules** with SCSS:
+
+```typescript
+import styles from "./my-component.module.scss";
+
+export const MyComponent = () => (
+  <div className={styles.container}>
+    {/* Scoped styles */}
+  </div>
+);
+```
+
+Type definitions auto-generated by `vite-plugin-sass-dts`.
+
+---
+
+## Integration with Freelens
+
+### Lifecycle
+
+1. **Extension Loaded**
+   - Main: `ExampleMain.onActivate()`
+   - Renderer: `ExampleRenderer.onActivate()`
+
+2. **Components Registered**
+   - Pages added to navigation
+   - Detail panels registered
+   - Menu items configured
+
+3. **User Interacts**
+   - Navigates to cluster page
+   - Views resource details
+   - Clicks menu items
+
+### Data Flow
+
+```
+User Action
+  → React Component (observer-wrapped)
+  → MobX Store (observable)
+  → KubeObjectStore (auto-loaded from K8s)
+  → ExampleApi (KubeApi wrapper)
+  → Kubernetes API
+```
+
+---
+
+## Performance Considerations
+
+- **Use `observer()`** wrapper for all components accessing observable stores
+- **KubeObject stores** are auto-loaded and cached
+- **External dependencies** not bundled → faster builds
+- **Module preservation** enables better debugging
+
+---
+
+## Troubleshooting
+
+### Extension not appearing
+
+**Check:**
+1. CRD installed in cluster? `kubectl get crd`
+2. Build output exists? `ls out/main/ out/renderer/`
+3. No build errors? `pnpm type:check`
+4. Freelens version >= 1.6.0?
+
+### "Cannot find module '@freelensapp/extensions'"
+
+**Solution:** This module should be **externalized** (not bundled). Check `electron.vite.config.js`.
+
+### React is not defined
+
+**Solution:** React must be externalized. Check externals in vite config.
+
+### Hot reload not working
+
+**Note:** Extensions require full rebuild after changes:
+```bash
+pnpm build
+```
+
+Then reload extension in Freelens.
+
+---
+
+## Best Practices
+
+1. **Version-Specific Modules:** Create separate files per CRD API version
+2. **MobX Integration:** Always use `@observer` wrapper and `@observable` decorator
+3. **Error Handling:** Wrap user components in `withErrorPage`
+4. **Store Access:** Use `KubeObject.getStore<T>()` to access stores
+5. **External Dependencies:** Leverage host-provided globals (React, MobX)
+6. **Preferences:** Extend `ExtensionStore` for persistent settings
+7. **Patch Operations:** Use `store.patch(object, patchData, "merge")` for K8s updates
+
+---
+
+## License
+
+MIT License © 2025 Freelens Authors
+
+---
+
+## Resources
+
+- **Freelens:** https://freelens.app
+- **GitHub:** https://github.com/freelensapp/freelens
+- **Extension Wiki:** https://github.com/freelensapp/freelens/wiki/Creating-extensions
+- **DeepWiki:** https://deepwiki.com/freelensapp/freelens-example-extension
+
+---
+
+## Quick Reference
+
+### Registration Points
+
+```typescript
+// In ExampleRenderer class
+appPreferences = [{ title, components: { Input, Hint } }]
+kubeObjectDetailItems = [{ kind, apiVersions, components: { Details } }]
+clusterPages = [{ id, components: { Page } }]
+clusterPageMenus = [{ id, title, target, components: { Icon } }]
+kubeObjectMenuItems = [{ kind, apiVersions, components: { MenuItem } }]
+```
+
+### Store Pattern
+
+```typescript
+class Store extends Common.Store.ExtensionStore<Model> {
+  @observable accessor field = defaultValue;
+  fromStore(model) { /* hydrate */ }
+  toJSON() { /* serialize */ }
+}
+```
+
+### Component Pattern
+
+```typescript
+const Component = observer((props) =>
+  withErrorPage(props, () => {
+    const store = KubeObject.getStore<KubeObject>();
+    return <KubeObjectListLayout store={store} />;
+  })
+);
+```
+
+---
+
+**Last Updated:** 2026-01-20
+**For LLMs:** Use this file to understand the extension architecture before reading source code.

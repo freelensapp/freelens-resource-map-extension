@@ -1,5 +1,6 @@
-ignoredBuiltDependencies:
+onlyBuiltDependencies:
   - '@parcel/watcher'
   - electron
+  - esbuild
   - node-pty
-  - win-ca
+  - playwright
