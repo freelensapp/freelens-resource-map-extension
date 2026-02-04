@@ -1,6 +1,10 @@
 
 # FreeLens Resource Map
 
+> [!CAUTION]
+> This extension is significantly outdated and relies on dependencies that are no longer maintained. A complete rewrite is needed, and until that work is complete, I recommend avoiding this extension.
+
+
 > [!NOTE]
 > This is a fork of [kube-resource-map](https://github.com/nevalla/lens-resource-map-extension),  
 originally created by **Lauri Nevala**. This version has been adapted and updated for FreeLens.
