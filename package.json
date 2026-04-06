@@ -110,7 +110,7 @@
     "@types/react": "^17.0.85",
     "@types/react-dom": "^17.0.26",
     "d3-force": "^3.0.0",
-    "electron": "^35.0.3",
+    "electron": "^39.8.5",
     "mobx": "^6.10.2",
     "mobx-react": "^7.6.0",
     "react": "^17.0.2",
