@@ -9,7 +9,6 @@
     // used as vite plugin
     "@babel/plugin-proposal-decorators",
     "vite-plugin-sass-dts",
-    "electron",
     "react-force-graph-2d",
     "d3-force",
     "@freelensapp/utilities"
