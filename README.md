@@ -1,5 +1,5 @@
 
-# FreeLens Resource Map
+# Freelens Resource Map Extension
 
 
 [![Home](https://img.shields.io/badge/%F0%9F%8F%A0-freelens.app-02a7a0)](https://freelens.app)
@@ -140,7 +140,7 @@ pnpm build
 This project is licensed under the MIT License.  
 Original work © [Lauri Nevala](https://github.com/nevalla) [ [kube-resource-map](https://github.com/nevalla/lens-resource-map-extension) ]
 
-Freelens adaptation and initial update © 2025 [Yasmine Gharbi](https://github.com/GHARBIyasmine)
+Freelens adaptation and initial update © 2025-2026 [Yasmine Gharbi](https://github.com/GHARBIyasmine)
 
 Maintained collaboratively under the [Freelens](https://github.com/freelensapp) organization.
 
