@@ -34,8 +34,7 @@ The following is a description from the original repo :
 ## Install
 
 To install open Freelens and go to Extensions (`ctrl`+`shift`+`E` or
-`cmd`+`shift`+`E`), and install `@freelensapp/
-freelens-resource-map-extension`.
+`cmd`+`shift`+`E`), and install `@freelensapp/resource-map-extension`.
 
 ## Build from the source
 
