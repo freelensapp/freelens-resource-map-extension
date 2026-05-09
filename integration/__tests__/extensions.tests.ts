@@ -34,7 +34,7 @@ describe("extensions page tests", () => {
     // Trigger extension install
     const textbox = window.getByPlaceholder("Name or file path or URL");
     console.log("await textbox.fill");
-    await textbox.fill(process.env.EXTENSION_PATH || "@freelensapp/freelens-resource-map-extension");
+    await textbox.fill(process.env.EXTENSION_PATH || "@freelensapp/resource-map-extension");
     const install_button_selector = 'button[class*="Button install-module__button--"]';
     console.log("await window.click [data-waiting=false]");
     await window.click(install_button_selector.concat("[data-waiting=false]"));
@@ -44,7 +44,7 @@ describe("extensions page tests", () => {
     const installedExtensionName = await (
       await window.waitForSelector('div[class*="installed-extensions-module__extensionName--"]')
     ).textContent();
-    expect(installedExtensionName).toBe("@freelensapp/freelens-resource-map-extension");
+    expect(installedExtensionName).toBe("@freelensapp/resource-map-extension");
     const installedExtensionState = await (
       await window.waitForSelector('div[class*="installed-extensions-module__enabled--"]')
     ).textContent();
