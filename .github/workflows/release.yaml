@@ -75,6 +75,7 @@ jobs:
           esac
           pnpm --color=always publish -r \
             --no-git-checks \
+            --access public \
             --tag ${dist_tag}
         env:
           NPM_CONFIG_PROVENANCE: "true"
@@ -91,6 +92,7 @@ jobs:
           esac
           pnpm --color=always publish -r \
             --no-git-checks \
+            --access public \
             --tag ${dist_tag}
         env:
           NPM_CONFIG_PROVENANCE: "true"
@@ -106,6 +108,7 @@ jobs:
           esac
           pnpm --color=always publish -r \
             --no-git-checks \
+            --access public \
             --tag ${dist_tag}
         env:
           NPM_CONFIG_PROVENANCE: "true"
