@@ -1,5 +1,5 @@
 
-# Freelens Resource Map Extension
+# @freelensapp/resource-map-extension
 
 
 [![Home](https://img.shields.io/badge/%F0%9F%8F%A0-freelens.app-02a7a0)](https://freelens.app)
