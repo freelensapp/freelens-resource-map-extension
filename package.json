@@ -96,7 +96,7 @@
     "@types/react": "^17.0.85"
   },
   "devDependencies": {
-    "@babel/plugin-proposal-decorators": "^7.28.0",
+    "@babel/plugin-proposal-decorators": "^7.29.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@vitejs/plugin-react": "^5.1.1",
     "electron-vite": "^4.0.1",
