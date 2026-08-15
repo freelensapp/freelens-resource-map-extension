@@ -117,7 +117,7 @@
     "react-force-graph-2d": "^1.27.1",
     "sass": "^1.97.3",
     "type-fest": "^2.19.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@10.12.4+sha256.cadfd9e6c9fcc2cb76fe7c0779a5250b632898aea5f53d833a73690c77a778d9"
 }
