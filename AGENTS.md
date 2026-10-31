@@ -164,10 +164,12 @@ src/
   renderer/components/KubeIngressChart.tsx        # Its subclass for Ingress
   renderer/components/tooltips/                   # The tooltip of a node, per kind, and MapTooltip, which shows it
                                                   # over the graph
-  renderer/components/helpers/                    # Color, icon and size per kind; the node and link types; the
-                                                  # host's stores, the canvas colors and the object of a Helm
+  renderer/components/helpers/                    # Name, color, icon and size per kind; the node and link types;
+                                                  # the host's stores, the canvas colors and the object of a Helm
                                                   # release; the builders of the graph of the selected namespaces
-                                                  # and of the details maps; the forces and the ref of a graph
+                                                  # and of the details maps; the forces, the ref and the node points
+                                                  # of a graph; the size of a container
+  renderer/components/map-node-list.tsx           # MapNodeList, the hidden list of the nodes of a settled map
   renderer/components/workloads-overview-item.tsx # The Workloads Overview panel inside its error boundary
   renderer/components/error-boundary.tsx          # ErrorBoundary and its registration wrappers
   renderer/components/error-page.tsx              # ErrorPage, which the boundary renders
@@ -175,9 +177,11 @@ src/
   renderer/vars.scss                              # SCSS variables
   common/                                         # No source, only its tsconfig.json
 test/freelens-extensions.ts                       # Runtime stub of @freelensapp/extensions for Vitest
+test/kube-objects.ts                              # Stand-ins for the host's models in unit tests
 environment-tests/                                # Probes for the per-environment programs
 build/                                            # Vite plugins: host modules, decorators, CSS module declarations
 integration/__tests__/                            # Integration tests against Freelens dev over CDP, and their helpers
+integration/fixtures/                             # Test objects and local Helm chart of the integration tests
 images/                                           # The screenshot that README.md shows
 ```
 
@@ -261,7 +265,9 @@ claims that its containers' `envFrom` and `env` `secretKeyRef`s name and its
 release, known from the labels and annotations that Helm sets and from its
 release secrets, to its workloads and those secrets. A `configMapKeyRef`, a
 projected volume or an init container gives no link, and in the Service and
-Ingress maps a pod links to no config map, secret or claim. The page and the
+Ingress maps a pod links to no config map, secret or claim. In a details map a
+Helm release is known from the labels and annotations that Helm sets on its
+workloads alone, and none of its release secrets links to it. The page and the
 panel draw the objects of the namespaces that the filter selects, a config map
 only when a pod links to it, a TLS secret only when a link reaches it, and a
 service account token secret only when a link other than a `secret` volume
@@ -304,9 +310,9 @@ container with `data-settled` and fills a visually hidden list,
 with an item per node: its kind, namespace and name in `data-kind`,
 `data-namespace` and `data-name`, and its point on the canvas, from
 `graph2ScreenCoords` (`nodePointsOf` of `helpers/graph-methods.ts`), in
-`data-x` and `data-y`. New data clears both. They are for the integration
-tests and the recordings of the README, which find a node on the screen at its
-point plus the position of the canvas.
+`data-x` and `data-y`. New data clears both. They are for assistive technology
+and the integration tests, which find a node on the screen at its point plus the
+position of the canvas.
 
 ### Data
 
@@ -434,9 +440,10 @@ route of Freelens where the release opens.
   (`.DrawerItem`, `.Badge`, `.StatusBrick`, `.Table`), the canvas container of force-graph (`.force-graph-container`)
   and the cursor classes it sets on the canvas (`.clickable`, `.grabbable`), and the plain names that the tooltips give
   the host's components or take from an object, such as `conditions` or the status of a pod. Layout is written in the
-  modules' own rules: the host's stylesheets define no utility classes for it, so a class such as `flex` or `gaps`
-  matches nothing. The graph's module, `KubeForceChart.module.scss`, serves both graphs. SCSS variables are in
-  `src/renderer/vars.scss`, used with `@use "../vars"`.
+  modules' own rules: the host no longer ships its flexbox utility classes, so a class such as `gaps` or `box` matches
+  nothing, and a Tailwind class such as `flex` matches a rule of the host only while core uses it ("Migrating off
+  flexbox.scss" in Freelens's `migrating-from-v1.md`). The graph's module, `KubeForceChart.module.scss`, serves both
+  graphs. SCSS variables are in `src/renderer/vars.scss`, used with `@use "../vars"`.
 - SCSS modules get TypeScript declarations (`*.module.d.scss.ts`), written during the renderer build (see
   "CSS module declarations"). They are committed, because `pnpm type:check` and `type-check.yaml` run without a build;
   commit the regenerated file with a change to its SCSS module. `pnpm clean:dts` removes them.
@@ -476,7 +483,7 @@ route of Freelens where the release opens.
 
 ## Rules That Fail Silently
 
-Each of these compiles when it is broken, and breaks the extension at runtime
+Most of these compile when they are broken, and break the extension at runtime
 or not visibly at all. The sections named in parentheses explain the
 mechanism; this is the list to check a change against.
 
@@ -490,18 +497,22 @@ mechanism; this is the list to check a change against.
   the class does not call `makeObservable(this)`. Without `accessor` the
   production build of mobx leaves the field unobservable; a unit test that
   imports the class fails ("Decorators").
-- **No Node or Electron in renderer and common code.** They are `undefined` in
-  the renderer. The build fails on an import, `pnpm type:check` on a global
-  ("Process-specific settings").
+- **No Node or Electron in renderer and common code.** Nothing guarantees them
+  in the renderer: they are reachable only while it is not context-isolated, and
+  may go in any release. The build fails on an import, `pnpm type:check` on a
+  global ("Process-specific settings").
 - **One CSS asset, `dist/renderer.css`.** The host links `renderer.css`, or
   `style.css` when there is no `renderer.css`, and no other stylesheet: an
   asset with any other name leaves the extension unstyled, and the rules of a
-  second asset never load. Nothing checks it; look at `dist/` after a change
-  to the CSS setup. The `<style>` tags that force-graph and float-tooltip
-  insert at runtime are not assets of the build ("CSS").
+  second asset never load. Only the integration tests can notice it, through the
+  480 px height that the stylesheet gives the map of the Workloads Overview;
+  look at `dist/` after a change to the CSS setup. The `<style>` tags that
+  force-graph and float-tooltip insert at runtime are not assets of the build
+  ("CSS").
 - **One tsconfig per environment.** Each program has only its runtime's `lib`
   and `types`, and no declaration may load Node into the renderer or the DOM
-  into main; otherwise a wrong API type-checks and is `undefined` at runtime.
+  into main; otherwise a wrong API type-checks, and is `undefined` at runtime
+  or, for Node in the renderer, works only until a release of the host drops it.
   The environment tests fail on a leak ("TypeScript").
 - **`this.props` and `this.state` of an `@observer` class component outside a
   derivation.** Under mobx-react 10 they are not observable. A `@computed`
@@ -546,8 +557,9 @@ mechanism; this is the list to check a change against.
   every request of the second run with it; the host takes an aborted
   `loadAll` for no failure, so the view shows nothing and logs nothing. Create
   the controller, and the list of watches to release, inside the effect. The
-  production build has no `StrictMode`, so only Freelens dev shows it, and
-  only in a view that loads stores no other page has loaded before it.
+  production build of React, which a packaged Freelens runs, ignores
+  `StrictMode`, so only Freelens dev shows it, and only in a view that loads
+  stores no other page has loaded before it.
 - **Every page, details panel and Workloads Overview item inside an error
   boundary.** A `try`/`catch` around the call of a component catches only what
   the call throws, not what a child throws when React renders it. Such an
@@ -633,8 +645,9 @@ Preact, and the d3 modules they use, and `d3-force` are in `dist/renderer.js`.
   an import of a Node builtin or of `electron` fails the build (Vite would
   otherwise replace it with an empty module and only warn).
   `process.env.NODE_ENV` is replaced at build time, because library mode
-  leaves it for a consumer's bundler and the page has no `process`; bundled
-  code reads it, such as `prop-types`, which `react-force-graph-2d` imports.
+  leaves it for a consumer's bundler and nothing guarantees the page a
+  `process`; bundled code reads it, such as `prop-types`, which
+  `react-force-graph-2d` imports.
 - **Main**: Node builtins (`node:*` and bare) and `electron` stay external.
   Bundled packages resolve with Vite's server conditions, so main gets their
   Node builds rather than their browser builds. Main is built for Rolldown's
@@ -973,8 +986,8 @@ type check for the same reason, so it does not run twice.
 `osv-scanner.yaml` checks the dependencies in `pnpm-lock.yaml` against the OSV
 database on pull requests, on pushes to `main` and once a week, and uploads
 what it finds to code scanning (`security-events: write`). The extension
-bundles libraries that the host does not provide, `react-force-graph-2d` and
-its dependencies, so a vulnerability in one of them ships in
+bundles libraries that the host does not provide, `react-force-graph-2d` with
+its dependencies and `d3-force`, so a vulnerability in one of them ships in
 `dist/renderer.js`. The scan sets `fail-on-vuln: false`: a finding does not
 block a pull request, and Renovate opens the fixes it can
 (`osvVulnerabilityAlerts` and `vulnerabilityAlerts` in `.renovaterc.json`,
@@ -1012,10 +1025,11 @@ process:
   the map follows a change of the selection, the tooltip of a node under a real
   pointer, and that a click on the node of the Helm release opens it at
   `/helm/releases/shop/catalog`.
-- `workloads-overview.tests.ts` opens Workloads > Overview as the first view
-  after the kind cluster connects. The overview loads pods and workloads, but
-  no Services or Ingresses: the session checks that the "Resources" panel draws
-  them, that its map is 480 px high and as wide as the panel, and one canvas.
+- `workloads-overview.tests.ts` connects the kind cluster, which opens on the
+  host's Cluster Overview, and opens Workloads > Overview. The two load pods,
+  workloads, events and nodes, but no Services or Ingresses: the session checks
+  that the "Resources" panel draws them, that its map is 480 px high and as
+  wide as the panel, and one canvas.
 - `details-drawers.tests.ts` connects the kind cluster, which opens on the
   host's Cluster Overview, selects the test namespaces through the namespace
   store, and opens the details of the test objects with
@@ -1033,15 +1047,16 @@ against the double mount of `React.StrictMode`, which Freelens dev renders in,
 holds. The test objects are the same Deployment, Service and ConfigMap in the
 namespaces `shop` and `billing`, an Ingress with a TLS secret and a service
 backend, one without rules, one whose rule has no `http` and one with a
-`resource` backend, and the release `catalog` of the local chart, whose
-objects Helm marks with its label and annotation, with a StatefulSet and its
-headless Service and a DaemonSet in `shop`. The pods run a pause container:
+`resource` backend, a StatefulSet with its headless Service and a DaemonSet,
+all in `shop`, and the release `catalog` of the local chart in `shop`, a
+Deployment and a Service that Helm marks with its label and annotation. The
+pods run a pause container:
 the map reads specs, and needs no ingress controller. The drawers of a
 Deployment, a DaemonSet and a StatefulSet list their pods with the metrics of
 their namespace, which the host asks `metrics.k8s.io` for; kind has no metrics
 server, and Chromium logs the 404 of each request as an error. The error
 collector leaves out that one error by its status and URL, with an exact
-pattern, and nothing else.
+pattern, and no other error of the renderer.
 
 The tests are deterministic, so nothing retries them: the config sets no
 `retry`, and the workflow runs the step once, under `timeout 600`. A retry
@@ -1077,15 +1092,18 @@ The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
 turbo otherwise groups the output of a task until it ends, and the persistent
 `dev` task never ends, so the log would stay empty.
 
-The helpers connect the kind cluster without opening a view
+The helpers connect the kind cluster without opening a view of the extension
 (`connectKindCluster`), so that a session opens its own as the first one after
-`disconnectKindCluster`. They open the Resource Map page from its sidebar entry,
+`disconnectKindCluster`; the cluster frame opens on the host's Cluster
+Overview, which loads pods, events and nodes. They open the Resource Map page
+from its sidebar entry,
 by the test id that the `clusterPageMenus` id `resource-map` gives it
 (`openResourceMap`), and Workloads > Overview at its route `/workloads`
 (`openWorkloadsOverview`), since its group of the sidebar may be collapsed.
-`selectNamespaces` selects the test namespaces, `shop` and `billing`, in the
-namespace filter of the open view, unless it shows them already: the first one
-alone, and the others with the key of a multiple selection held, Meta on macOS
+`selectNamespaces` selects the namespaces it is given, the test namespaces
+`shop` and `billing` or `shop` alone, in the namespace filter of the open view,
+unless it shows them already: the first one alone, and the others with the key
+of a multiple selection held, Meta on macOS
 and Control elsewhere. The filter is the host's, and the app keeps its selection
 for every view of the cluster. `settledNodes` waits for the `data-settled` mark
 of the map and reads its hidden list of the nodes, and `nodePoint` gives the
@@ -1097,8 +1115,10 @@ selects namespaces through the namespace store, for a view with no filter,
 finds the selfLink of a pod in the host's store, since the names of pods end
 with a random suffix. The helpers wait with `until`, which, unlike
 `expect.poll`, also runs in the hooks of a session. A session opens no page of
-the host whose requests log errors of their own: the Pods page asks for pod
-metrics, and kind has no metrics server. The sessions change nothing in the
+the host whose requests log errors of their own: the Pods page asks for the pod
+metrics of the whole cluster, and kind has no metrics server. The drawers of a
+Deployment, a DaemonSet and a StatefulSet ask for those of one namespace, whose
+404 the error collector leaves out. The sessions change nothing in the
 cluster.
 
 The code the sessions share is in `integration/__tests__/extension-helpers.ts`:
@@ -1195,8 +1215,11 @@ syncs of the dev profile" in Freelens's `DEVELOPMENT.md`).
 - Views fill in once the host's stores have loaded. Wait for the expected
   content, not a fixed time, before deciding that a page is empty.
 - The graph is a `<canvas>` inside `.force-graph-container`. Its nodes are not
-  DOM elements, so a script finds them neither by text nor by role, and the
-  tooltip of a node shows only while the pointer is on it.
+  DOM elements; once the graph has settled (`data-settled` on its container),
+  the visually hidden list `[data-testid="resource-map-nodes"]` has an item
+  per node, with its kind, namespace, name and point on the canvas, which a
+  script reads, as the integration tests do. The tooltip of a node shows only
+  while the pointer is on it.
 
 ### Reading the console
 
@@ -1225,7 +1248,7 @@ console.
 ## Code Style
 
 - **Biome** formats **TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML, Markdown**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width; use `pnpm biome:fix`
-- **Trunk** formats **TOML and shell scripts**, and runs the linters for formats not covered by Biome (yamllint, actionlint, shellcheck); use `pnpm trunk:fix`
+- **Trunk** formats **TOML and shell scripts**, and with yamlfmt the Kubernetes manifests of `integration/fixtures/`, which Biome leaves out, and runs the linters for formats not covered by Biome (yamllint, actionlint, shellcheck); use `pnpm trunk:fix`
 - Import order (enforced by biome organizeImports): every value import first, in one block: built-in modules → packages → relative paths; then the `import type` lines: built-in modules → `@freelensapp/**` → packages → relative paths, with a blank line before each of the last three groups
 - React 19; JSX compiles to `react/jsx-runtime` imports, which the build maps to the host's React
 - **No emoji** in Markdown files (`.md`), comments, or any source code
@@ -1293,8 +1316,8 @@ entry is empty, and all its code runs in the renderer.
 2. **Follow existing patterns:** grep for similar implementations before creating new ones
 3. **Test changes** before committing
 4. **Run validation before committing:** `pnpm lint:fix && pnpm type:check && pnpm test:unit`
-5. **For TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML and Markdown files:** run `pnpm biome:fix` (or `biome check` directly if `biome` is installed locally)
-6. **For other formats:** run `pnpm trunk:fix` (or `trunk check` directly if `trunk` is installed locally)
+5. **For TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML and Markdown files:** run `pnpm biome:fix` (or `biome check --fix` directly if `biome` is installed locally)
+6. **For other formats, and the Kubernetes manifests of `integration/fixtures/`:** run `pnpm trunk:fix` (or `trunk check --fix` directly if `trunk` is installed locally)
 7. **Full build** when in doubt about cached state: `pnpm clean:all && pnpm install && pnpm build`
 
 ## GitHub Actions (Claude Code Action) Rules
