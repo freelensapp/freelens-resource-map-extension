@@ -222,7 +222,9 @@ emits `dist/main.js` for the `main` entry of `package.json`.
 details maps, through its subclasses for the registered kinds, which choose the
 objects around the shown one. Both render `ForceGraph2D` of
 `react-force-graph-2d` and set the link, charge, collision and center forces of
-its simulation; the last three come from `d3-force`. They draw every node
+its simulation; the last three come from `d3-force`. The page and the panel set
+them when the graph puts its methods in their ref, a ref object with a setter:
+`react-force-graph-2d` takes no callback ref. They draw every node
 themselves, in `nodeCanvasObject`: a circle in the color of its kind, the icon
 of its kind on it, and its name below. A pod takes the color of its status. A
 workload on the page and in the panel, and the shown object in a details map,
@@ -267,6 +269,15 @@ shows the refreshed nodes where they are. A load of the stores, when the graph
 mounts and when the selection changes, starts from no previous graph. A
 details map adds and removes its nodes itself.
 
+When the graph of the page or the panel stops after its first zoom
+(`onEngineStop`), the map marks its container with `data-settled` and fills a
+visually hidden list, `data-testid="resource-map-nodes"`, with an item per
+node: its kind, namespace and name in `data-kind`, `data-namespace` and
+`data-name`, and its point on the canvas, from `graph2ScreenCoords`, in
+`data-x` and `data-y`. New data clears both. They are for the integration
+tests and the recordings of the README, which find a node on the screen at its
+point plus the position of the canvas.
+
 ### Data
 
 The graphs read the host's stores and nothing else: `Renderer.K8sApi.podsStore`,
@@ -281,8 +292,16 @@ of one of these stores, sent by the host.
 
 A graph loads its stores in `componentDidMount`, one after the other:
 `loadAll()`, for the namespaces of the filter, then `subscribe()`, which starts
-the store's watch and returns the function that stops it. The graph calls
-those functions before it loads again and in `componentWillUnmount`. A
+the store's watch and returns the function that stops it. The page and the
+panel load the stores of the kinds that the user may list (`canListMapStore`
+of `helpers/stores.ts`, from `Renderer.K8sApi.isAllowedResource`), with one
+`AbortController` for the loads (`reqInit.signal`) and the watches
+(`subscribe({ abortController })`). A new load, when the selection changes,
+and `componentWillUnmount` abort it, and a load that comes back aborted writes
+nothing and starts no watch, so `React.StrictMode` leaves one load and one
+watch per store. A list that fails reaches `onLoadFailure`, which logs a
+warning, and the map draws the other kinds. A details map calls the functions
+that stop its watches before it loads again and in `componentWillUnmount`. A
 `reaction` per store, on `store.items.toJSON()` compared with
 `compareStructural`, follows the changes: the page and the panel build their
 graph again, and a details map removes the nodes of deleted objects and adds
