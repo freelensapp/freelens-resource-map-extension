@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deployment, kubeObject, pod } from "../../../../test/kube-objects";
+import { deployment, kubeObject, pod, secret } from "../../../../test/kube-objects";
 import { buildControllerMap, buildIngressMap, buildPodMap, buildServiceMap } from "./details-graph";
 
 import type { Renderer } from "@freelensapp/extensions";
@@ -124,5 +124,89 @@ describe("the builders of the details maps", () => {
 
     expect(linkIds(buildPodMap(web1, input))).toEqual(["Deployment/shop/web -> Pod/shop/web-1"]);
     expect(linkIds(buildPodMap(api1, input))).toEqual([]);
+  });
+  describe("on what the maps draw", () => {
+    const web1 = pod("web-1", "shop", {
+      labels: { app: "web", "app.kubernetes.io/instance": "catalog" },
+      containers: [
+        {
+          name: "web",
+          env: [{ name: "DB_PASSWORD", valueFrom: { secretKeyRef: { name: "db-credentials", key: "password" } } }],
+          envFrom: [{ configMapRef: { name: "web-config" } }],
+        },
+      ],
+      volumes: [{ name: "data", persistentVolumeClaim: { claimName: "web-data" } }],
+    });
+    const web = Object.assign(deployment("web", "shop", { app: "web" }), {
+      metadata: {
+        name: "web",
+        namespace: "shop",
+        labels: { "app.kubernetes.io/managed-by": "Helm" },
+        annotations: { "meta.helm.sh/release-name": "catalog" },
+      },
+    });
+    const webService = service("web", "shop", { app: "web" });
+    const storefront = kubeObject<Renderer.K8sApi.Ingress>(
+      "Ingress",
+      { name: "storefront", namespace: "shop" },
+      {
+        spec: {
+          tls: [{ secretName: "storefront-tls" }],
+          rules: [{ http: { paths: [{ path: "/", backend: { service: { name: "web" } } }] } }],
+        },
+      },
+    );
+    const input = objects({
+      pods: [web1],
+      deployments: [web],
+      services: [webService],
+      ingresses: [storefront],
+      secrets: [secret("db-credentials", "shop"), secret("storefront-tls", "shop", "kubernetes.io/tls")],
+      configMaps: [kubeObject<Renderer.K8sApi.ConfigMap>("ConfigMap", { name: "web-config", namespace: "shop" })],
+      pvcs: [
+        kubeObject<Renderer.K8sApi.PersistentVolumeClaim>("PersistentVolumeClaim", {
+          name: "web-data",
+          namespace: "shop",
+        }),
+      ],
+      childPods: (controller) => (controller === web ? [web1] : []),
+    });
+    const podLinks = [
+      "PersistentVolumeClaim/shop/web-data -> Pod/shop/web-1",
+      "Pod/shop/web-1 -> ConfigMap/shop/web-config",
+      "Pod/shop/web-1 -> Secret/shop/db-credentials",
+    ];
+    const around = [
+      "Deployment/shop/web -> HelmRelease/shop/catalog",
+      "Deployment/shop/web -> Pod/shop/web-1",
+      "Ingress/shop/storefront -> Secret/shop/storefront-tls",
+      "Ingress/shop/storefront -> Service/shop/web",
+      "Pod/shop/web-1 -> Service/shop/web",
+    ];
+
+    it("draw a workload with its pods and what they use, their Services, the Ingress and the Helm release", () => {
+      expect(linkIds(buildControllerMap(web, input))).toEqual([...around, ...podLinks].sort());
+    });
+
+    it("draw a pod with what it uses, its Services, its controller, the Ingress and the Helm release", () => {
+      expect(linkIds(buildPodMap(web1, input))).toEqual([...around, ...podLinks].sort());
+    });
+
+    it("draw a Service with its pods but not what they use, their controllers and the Ingresses that name it", () => {
+      expect(linkIds(buildServiceMap(webService, input))).toEqual(around);
+    });
+
+    it("draw an Ingress with its TLS Secret, its Services and their pods, without what they use", () => {
+      expect(linkIds(buildIngressMap(storefront, input))).toEqual(around);
+    });
+
+    it("keep the node and link objects of the previous graph", () => {
+      const first = buildControllerMap(web, input);
+      const second = buildControllerMap(web, input, first);
+
+      expect(second.nodes).toEqual(first.nodes);
+      second.nodes.forEach((node, i) => expect(node).toBe(first.nodes[i]));
+      second.links.forEach((link, i) => expect(link).toBe(first.links[i]));
+    });
   });
 });

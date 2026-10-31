@@ -24,6 +24,8 @@ export function kubeObject<T extends KubeObject>(kind: string, metadata: Metadat
     metadata,
     getName: () => metadata.name,
     getNs: () => metadata.namespace,
+    // The uid of the host's objects: one per object, the same in every instance of it.
+    getId: () => `${kind}/${metadata.namespace}/${metadata.name}`,
     getLabels: () => stringify(metadata.labels),
     ...members,
   } as T;

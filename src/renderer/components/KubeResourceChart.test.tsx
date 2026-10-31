@@ -4,7 +4,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { observable } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pod } from "../../../test/kube-objects";
+import { kubeObject, pod } from "../../../test/kube-objects";
 import { KubePodChart } from "./KubePodChart";
 
 import type { Renderer } from "@freelensapp/extensions";
@@ -109,6 +109,10 @@ afterEach(() => {
 });
 
 const stores = () => Object.values(host.stores);
+const linkIds = () =>
+  graph.props?.graphData.links
+    .map((link) => `${(link.source as ChartDataSeries).id} -> ${(link.target as ChartDataSeries).id}`)
+    .sort();
 
 describe("KubeResourceChart", () => {
   it.each([
@@ -136,4 +140,18 @@ describe("KubeResourceChart", () => {
       expect(stores().map((store) => store.watches)).toEqual(stores().map(() => 0));
     },
   );
+
+  it("builds the map again for a new instance of its object", async () => {
+    const before = pod("web-1", "shop", { labels: { app: "web" } });
+    host.stores.pods.items.replace([before]);
+    host.stores.services.items.replace([
+      kubeObject("Service", { name: "web", namespace: "shop" }, { spec: { selector: { app: "web" } } }),
+    ]);
+    const { rerender } = render(<KubePodChart object={before} />);
+    await waitFor(() => expect(linkIds()).toEqual(["Pod/shop/web-1 -> Service/shop/web"]));
+
+    rerender(<KubePodChart object={pod("web-1", "shop", { labels: { app: "api" } })} />);
+
+    expect(linkIds()).toEqual([]);
+  });
 });
