@@ -166,7 +166,8 @@ src/
                                                   # over the graph
   renderer/components/helpers/                    # Color, icon and size per kind; the node and link types; the
                                                   # host's stores, the canvas colors and the object of a Helm
-                                                  # release; the builder of the graph of the selected namespaces
+                                                  # release; the builders of the graph of the selected namespaces
+                                                  # and of the details maps; the forces and the ref of a graph
   renderer/components/workloads-overview-item.tsx # The Workloads Overview panel inside its error boundary
   renderer/components/error-boundary.tsx          # ErrorBoundary and its registration wrappers
   renderer/components/error-page.tsx              # ErrorPage, which the boundary renders
@@ -221,33 +222,34 @@ emits `dist/main.js` for the `main` entry of `package.json`.
 
 ### The graph
 
-`KubeForceChart` draws the page and the panel. `KubeResourceChart` draws the
-details maps, through its subclasses for the registered kinds, which choose the
-objects around the shown one. Both render `ForceGraph2D` of
-`react-force-graph-2d` and set the link, charge, collision and center forces of
-its simulation; the last three come from `d3-force`. The page and the panel set
-them when the graph puts its methods in their ref, a ref object with a setter:
-`react-force-graph-2d` takes no callback ref. They draw every node
-themselves, in `nodeCanvasObject`: a circle in the color of its kind, the icon
-of its kind on it, and its name below. A pod takes the color of its status. A
-workload on the page and in the panel, and the shown object in a details map,
-get an outer ring. The fill of the ring and the color of the names come from
-the active theme (`Renderer.Theme.activeTheme`), which the graphs read while
-they render; `KubeForceChart` reads them with `getCanvasColors()` of
-`helpers/theme-colors.ts`. A link takes the color of its source, and the links
-of the node under the pointer are drawn thicker.
-`src/renderer/components/helpers/config.ts` has the name for people, color,
-icon and size of every kind, and `helpers/types.ts` the node and link types,
-built on those of `react-force-graph-2d`. The legend of the page shows the
-icon and the name of every kind, such as "Persistent Volume Claim".
+`KubeForceChart` draws the page and the panel, and `KubeResourceChart` the
+details maps: each of its subclasses names the class of the object of its
+registration, and builds its map with the builder of `helpers/details-graph.ts`
+for that kind (`buildControllerMap`, `buildPodMap`, `buildServiceMap`,
+`buildIngressMap`); the base class draws nothing by itself. Both render
+`ForceGraph2D` of `react-force-graph-2d` and set the link, charge, collision and
+center forces of its simulation; the last three come from `d3-force`
+(`applyMapForces` of `helpers/graph-methods.ts`). They set them when the graph
+puts its methods in their ref, a ref object with a setter (`refWithSetter`):
+`react-force-graph-2d` takes no callback ref. They draw every node themselves,
+in `nodeCanvasObject`: a circle in the color of its kind, the icon of its kind
+on it, and its name below. A pod takes the color of its status. A workload on
+the page and in the panel, and the shown object in a details map, get an outer
+ring. The fill of the ring and the color of the names come from the active theme
+(`Renderer.Theme.activeTheme`), which the graphs read while they render, with
+`getCanvasColors()` of `helpers/theme-colors.ts`. A link takes the color of its
+source, and the links of the node under the pointer are drawn thicker.
+`src/renderer/components/helpers/config.ts` has the name for people, color, icon
+and size of every kind, and `helpers/types.ts` the node and link types, built on
+those of `react-force-graph-2d`. The legend of the page shows the icon and the
+name of every kind, such as "Persistent Volume Claim".
 
-The page and the panel give the graph the size of their container, which
-`ElementSize` of `helpers/element-size.ts` follows with a `ResizeObserver`.
-On the page the container fills the page below its header: the host's
-`<main>` of the `TabLayout` is a flex column there, and the map takes the
-rest of it. In the panel it is 480 px high and as wide as the panel. A
-details map takes the width of an element that it finds by its id, and a
-height of 400 px.
+A graph takes the size of its container, which `ElementSize` of
+`helpers/element-size.ts` follows with a `ResizeObserver`. On the page the
+container fills the page below its header: the host's `<main>` of the
+`TabLayout` is a flex column there, and the map takes the rest of it. In the
+panel it is 480 px high and as wide as the panel, and in a details panel 400
+px high and as wide as the panel, below its "Resources" title.
 
 The nodes are the pods, deployments, stateful sets, daemon sets, services,
 ingresses, persistent volume claims, config maps and secrets, and the Helm
@@ -269,7 +271,10 @@ the filter. The exception is the Deployment of a pod in the Pod, Service and
 Ingress maps: for a pod that no StatefulSet or DaemonSet owns, it is the first
 Deployment in the store, in any namespace, whose `matchLabels` the pod carries.
 A Deployment's `matchExpressions` are not read, so one that selects with them
-alone matches every such pod. A graph shows a spinner until its stores have
+alone matches every such pod. In the workload and Pod maps, only the first
+Ingress of the namespace whose backend names a Service on the map gets a node,
+with its TLS secrets, and the links of every later such Ingress start from that
+node. A graph shows a spinner until its stores have
 loaded, and the page and the panel show "No visualizable resources found in
 this namespace." when the stores, config maps aside, loaded no object; the
 message stays until the selection of the filter changes, because the reactions
@@ -279,20 +284,22 @@ On the page and the panel, `buildNamespaceGraph` of `helpers/namespace-graph.ts`
 builds the nodes and the links from the stores' items, the selected namespaces
 and the previous graph; it reads no store and starts no reaction. The id of a
 node is the kind, the namespace and the name of its object, so two objects of
-the same kind and name in two namespaces are two nodes. It reuses the objects
-of the previous graph: a node whose id it builds again is the same node
-object, with its object and color refreshed, and so is a link whose ends it
-builds again. force-graph keeps the position of a node, and the picking
-color of a node or a link, on the object itself, and its color registry frees
-nothing, so new copies of the same nodes and links would fill it up. A change
-in a store builds the graph again from the previous one, and a node that
-nothing references any more leaves it, such as a config map that no pod reads.
-`KubeForceChart` gives the graph new data, which starts the simulation again,
-only when the nodes or the links change by id (`sameGraph`); otherwise the
-canvas, which force-graph draws on every frame (`autoPauseRedraw={false}`),
-shows the refreshed nodes where they are. A load of the stores, when the graph
-mounts and when the selection changes, starts from no previous graph. A
-details map adds and removes its nodes itself.
+the same kind and name in two namespaces are two nodes. It reuses the objects of
+the previous graph: a node whose id it builds again is the same node object,
+with its object and color refreshed, and so is a link whose ends it builds
+again. force-graph keeps the position of a node, and the picking color of a node
+or a link, on the object itself, and its color registry frees nothing, so new
+copies of the same nodes and links would fill it up. A change in a store builds
+the graph again from the previous one, and a node that nothing references any
+more leaves it, such as a config map that no pod reads. `KubeForceChart` gives
+the graph new data, which starts the simulation again, only when the nodes or
+the links change by id (`sameGraph`); otherwise the canvas, which force-graph
+draws on every frame (`autoPauseRedraw={false}`), shows the refreshed nodes
+where they are. A load of the stores, when the graph mounts and when the
+selection changes, starts from no previous graph. A details map builds its graph
+in the same way, around its object and in its namespace, with the builder of its
+kind. Its node id is still the kind and the name, and a node of the same kind
+and name from another namespace is the same node.
 
 When the graph of the page or the panel stops after its first zoom
 (`onEngineStop`), the map marks its container with `data-settled` and fills a
@@ -308,66 +315,61 @@ point plus the position of the canvas.
 The graphs read the host's stores and nothing else: `Renderer.K8sApi.podsStore`,
 `deploymentStore`, `statefulSetStore`, `daemonSetStore`, `serviceStore`,
 `ingressStore`, `pvcStore`, `configMapStore` and `secretsStore`, and
-`namespaceStore` for the namespaces that the filter selects; `KubeForceChart`
-takes them from `getMapStores()` and `getNamespaceStore()` of
-`helpers/stores.ts`. They are the host's singletons, shared with its own
-pages: a store that another view has loaded is there already, and what the
-map loads is what the host's lists show. Every request is a list or a watch
-of one of these stores, sent by the host.
+`namespaceStore` for the namespaces that the filter selects. They take the
+stores from `getMapStores()` of `helpers/stores.ts`, and the page and the panel
+take the namespace store from `getNamespaceStore()`; a details map reads no
+namespace store. They are the host's singletons, shared with its own pages: a
+store that another view has loaded is there already, and what the map loads is
+what the host's lists show. Every request is a list or a watch of one of these
+stores, sent by the host.
 
 A graph loads its stores in `componentDidMount`, one after the other:
 `loadAll()`, for the namespaces of the filter, then `subscribe()`, which starts
-the store's watch and returns the function that stops it. The page and the
-panel load the stores of the kinds that the user may list (`canListMapStore`
-of `helpers/stores.ts`, from `Renderer.K8sApi.isAllowedResource`), with one
-`AbortController` for the loads (`reqInit.signal`) and the watches
-(`subscribe({ abortController })`). A new load, when the selection changes,
-and `componentWillUnmount` abort it, and a load that comes back aborted writes
-nothing and starts no watch, so `React.StrictMode` leaves one load and one
-watch per store. A list that fails reaches `onLoadFailure`, which logs a
-warning, and the map draws the other kinds. A details map calls the functions
-that stop its watches before it loads again and in `componentWillUnmount`. A
-`reaction` per store, on `store.items.toJSON()` compared with
-`compareStructural`, follows the changes: the page and the panel build their
-graph again, and a details map removes the nodes of deleted objects and adds
-the new ones; `toJSON()` reads every item and returns a new array, so the
-reaction sees the objects that the host replaces in place ("Rules That Fail
-Silently").
-The page and the panel follow the selection of the filter with one reaction,
-`namespaceStore.onContextChange` with `fireImmediately`, registered when they
-mount and disposed when they unmount: it keeps the namespaces it is given,
-which every build of the graph reads, and loads the stores again when they
-change. A build starts no reaction of its own. A details
-map loads only the stores that have not loaded yet (`isLoaded`), reacts to the
-pods and to the store of its object's kind, and follows a new `object` from
-the host in `componentDidUpdate`.
+the store's watch and returns the function that stops it. A graph loads the
+stores of the kinds that the user may list (`canListMapStore` of
+`helpers/stores.ts`, from `Renderer.K8sApi.isAllowedResource`), with one
+`AbortController` for the loads (`reqInit.signal`) and the watches (`subscribe({
+abortController })`). A new load of the page or the panel, when the selection
+changes, and `componentWillUnmount` abort it, and a load that comes back aborted
+writes nothing and starts no watch, so `React.StrictMode` leaves one load and
+one watch per store. A list that fails reaches `onLoadFailure`, which logs a
+warning, and the map draws the other kinds. A `reaction` per store, on
+`store.items.toJSON()` compared with `compareStructural`, builds the graph again
+when the store changes; `toJSON()` reads every item and returns a new array, so
+the reaction sees the objects that the host replaces in place ("Rules That Fail
+Silently"). The page and the panel follow the selection of the filter with one
+reaction, `namespaceStore.onContextChange` with `fireImmediately`, registered
+when they mount and disposed when they unmount: it keeps the namespaces it is
+given, which every build of the graph reads, and loads the stores again when
+they change. A build starts no reaction of its own. A details map loads only the
+stores that have not loaded yet (`isLoaded`) and watches them all, reacts to the
+pods and to the store of its object's kind, and follows a new `object` from the
+host in `componentDidUpdate`. It does not load again when the selection changes:
+it keeps the stores and the graph it has.
 
 ### Tooltips, icons and clicks
 
-Hovering a node shows a tooltip for its object, made of the host's
-`DrawerItem`, `Badge`, `StatusBrick` and `Table`: `PodTooltip`,
-`ServiceTooltip`, `DeploymentTooltip`, `StatefulsetTooltip`, `IngressTooltip`,
-with the hosts and paths of its rules, and `DefaultTooltip` for every other
-kind, in
-`src/renderer/components/tooltips/`. A graph renders the tooltip of the
-hovered node in its own React tree, in a `div` next to the pointer, which the
-mouse moves over the graph's container place without a render. On the page
-and the panel that `div` is `MapTooltip` of `tooltips/map-tooltip.tsx`, with
-the test id `resource-map-tooltip` and `pointer-events: none`: the container
-hands its mouse moves to `follow`, and `NodeTooltip` picks the tooltip of the
-kind. A details map renders its own `div` the same way. The tooltips take the
-theme's colors: `--textColorSecondary` for their text, `--drawerItemNameColor`
-and `--drawerItemValueColor` for the names and values of a `DrawerItem`, and
-`--tooltipBackground`, `--borderColor` and `--textColorPrimary` for the box of
-`MapTooltip`. force-graph shows its tooltip
+Hovering a node shows a tooltip for its object, made of the host's `DrawerItem`,
+`Badge`, `StatusBrick` and `Table`: `PodTooltip`, `ServiceTooltip`,
+`DeploymentTooltip`, `StatefulsetTooltip`, `IngressTooltip`, with the hosts and
+paths of its rules, and `DefaultTooltip` for every other kind, in
+`src/renderer/components/tooltips/`. A graph renders the tooltip of the hovered
+node in its own React tree, in a `div` next to the pointer, which the mouse
+moves over the graph's container place without a render. That `div` is
+`MapTooltip` of `tooltips/map-tooltip.tsx`, with the test id
+`resource-map-tooltip` and `pointer-events: none`: the container hands its mouse
+moves to `follow`, and `NodeTooltip` picks the tooltip of the kind. The tooltips
+take the theme's colors: `--textColorSecondary` for their text,
+`--drawerItemNameColor` and `--drawerItemValueColor` for the names and values of
+a `DrawerItem`, and `--tooltipBackground`, `--borderColor` and
+`--textColorPrimary` for the box of `MapTooltip`. force-graph shows its tooltip
 with float-tooltip, which sets a label that is a string as HTML, appends one
 that is an element, and renders a JSX element with its own copy of Preact,
 bundled with it. The host's components run on the host's React, which Preact
-does not provide, and an HTML string of them needs `react-dom/server`, which
-the host does not publish ("Modules provided by the host"). Rendered in the
-graph's own tree, the tooltip is part of the graph's render, on the host's
-React. `nodeLabel` returns an empty string, so force-graph shows no tooltip
-of its own.
+does not provide, and an HTML string of them needs `react-dom/server`, which the
+host does not publish ("Modules provided by the host"). Rendered in the graph's
+own tree, the tooltip is part of the graph's render, on the host's React.
+`nodeLabel` returns an empty string, so force-graph shows no tooltip of its own.
 
 The icon of every kind is an SVG file in `src/renderer/assets/icons/`, imported
 with `?url` in `helpers/config.ts`. Library mode inlines every asset it
@@ -378,17 +380,13 @@ the bundle needs no path to one. The graphs draw the icons on the canvas from
 gives the markup that `Renderer.Component.Icon` takes through its `svg` prop.
 
 A click on a node opens the host's details of its object with
-`Renderer.Navigation.showDetails` and the object's `selfLink`. On the page and
-the panel, force-graph sets `.clickable` on the canvas over a node that a click
-opens, and the rule copied from its tag shows the pointer; a details map also
-sets the cursor of its container, which it finds by its id. A Helm release is
-no Kubernetes object: its node holds a `KubeObject` of kind `HelmRelease`,
-built from the release's name and namespace (`createHelmReleaseObject` of
-`helpers/helm.ts` on the page and the panel). On the page and the panel, a
-click on it navigates to `/helm/releases/<namespace>/<name>`
-(`getHelmReleasePath`), the route of Freelens where the release opens; a
-details map navigates to `/apps/releases/<namespace>/<name>`, which no route of
-Freelens 2.0.0 answers.
+`Renderer.Navigation.showDetails` and the object's `selfLink`. force-graph sets
+`.clickable` on the canvas over a node that a click opens, and the rule copied
+from its tag shows the pointer. A Helm release is no Kubernetes object: its
+node holds a `KubeObject` of kind `HelmRelease`, built from the release's name
+and namespace (`createHelmReleaseObject` of `helpers/helm.ts`), and a click on
+it navigates to `/helm/releases/<namespace>/<name>` (`getHelmReleasePath`), the
+route of Freelens where the release opens.
 
 ## Renderer Components
 

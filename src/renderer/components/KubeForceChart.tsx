@@ -1,11 +1,11 @@
 import { Common, Renderer } from "@freelensapp/extensions";
-import * as d3 from "d3-force";
 import { compareStructural, observable, reaction, runInAction } from "mobx";
 import { observer } from "mobx-react";
 import React from "react";
-import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
+import ForceGraph2D from "react-force-graph-2d";
 import { config } from "./helpers/config";
 import { ElementSize } from "./helpers/element-size";
+import { applyMapForces, type GraphMethods, refWithSetter } from "./helpers/graph-methods";
 import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { buildNamespaceGraph, type NamespaceGraphObjects, sameGraph } from "./helpers/namespace-graph";
 import { canListMapStore, getMapStores, getNamespaceStore, type MapStores } from "./helpers/stores";
@@ -48,20 +48,6 @@ const logPrefix = "[@freelensapp/resource-map-extension]";
 
 const pick = ({ id, kind, namespace, name }: ChartDataSeries) => ({ id, kind, namespace, name });
 
-/** A ref object that hands to `onSet` what React puts in it, `null` included. */
-function refWithSetter<T>(onSet: (value: T | null | undefined) => void): React.MutableRefObject<T | undefined> {
-  let current: T | undefined;
-  return {
-    get current() {
-      return current;
-    },
-    set current(value) {
-      current = value ?? undefined;
-      onSet(value);
-    },
-  };
-}
-
 @observer
 export class KubeForceChart extends React.Component<object, State> {
   @observable accessor isReady = false;
@@ -76,13 +62,13 @@ export class KubeForceChart extends React.Component<object, State> {
   protected nodes: ChartDataSeries[] = [];
 
   protected config = KubeForceChart.config;
-  private chart?: ForceGraphMethods<ChartDataSeries, LinkObject>;
+  private chart?: GraphMethods;
   // The graph sets its methods in this ref when it mounts, so the forces go on
   // a simulation that exists.
-  private readonly chartRef = refWithSetter<ForceGraphMethods<ChartDataSeries, LinkObject>>((chart) => {
+  private readonly chartRef = refWithSetter<GraphMethods>((chart) => {
     this.chart = chart ?? undefined;
     if (chart) {
-      this.applyGraphForces();
+      applyMapForces(chart);
     }
   });
   private readonly tooltip = React.createRef<MapTooltip>();
@@ -165,17 +151,6 @@ export class KubeForceChart extends React.Component<object, State> {
     this.links = [];
     this.initZoomDone = false;
     this.generateChartDataSeries();
-  };
-
-  applyGraphForces = () => {
-    const fg = this.chart;
-    fg?.zoom(1.3, 1000);
-    fg?.d3Force("link")
-      ?.strength(1.3)
-      .distance(() => 60);
-    fg?.d3Force("charge", d3.forceManyBody().strength(-60).distanceMax(250));
-    fg?.d3Force("collide", d3.forceCollide(40));
-    fg?.d3Force("center", d3.forceCenter());
   };
 
   getLinksForNode(node: ChartDataSeries): LinkObject[] {

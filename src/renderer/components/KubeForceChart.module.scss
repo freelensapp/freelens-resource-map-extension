@@ -42,16 +42,11 @@
   color: var(--textColorSecondary);
 }
 
-.tooltip {
-  position: absolute;
-  z-index: 10;
-  min-width: 300px;
-  max-width: 400px;
-  padding: 3px;
-  border: 1px solid var(--borderColor);
-  border-radius: 3px;
-  background: var(--tooltipBackground);
-  pointer-events: none;
+// the map of a details panel, as wide as the panel; the content of the
+// drawer is a flex column, where a map that shrinks would lose its height
+.details {
+  flex-shrink: 0;
+  height: 400px;
 }
 
 // the list of the nodes on the canvas, for assistive technology and the
