@@ -1,5 +1,5 @@
 import React from "react";
-import { KubeForceChart } from "./KubeForceChart";
+import { config } from "./helpers/config";
 import styles from "./KubeResourceChartLegend.module.scss";
 
 interface Props {
@@ -16,12 +16,12 @@ export class KubeResourceChartLegend extends React.Component<Props> {
     return (
       <div className={styles.legend}>
         <p className={styles.title}>Legend:</p>
-        {Object.entries(KubeForceChart.config).map(([kind, configItem]) => {
+        {Object.entries(config).map(([kind, configItem]) => {
           const style = { "--color": configItem.color } as React.CSSProperties;
           return (
             <div key={kind} className={styles.resource} style={style}>
-              <img className={styles.icon} src={configItem.icon} width={iconSize} height={iconSize} alt={kind} />
-              <span className={styles.kind}>{kind}</span>
+              <img className={styles.icon} src={configItem.icon} width={iconSize} height={iconSize} alt="" />
+              <span className={styles.kind}>{configItem.label}</span>
             </div>
           );
         })}

@@ -236,9 +236,10 @@ the active theme (`Renderer.Theme.activeTheme`), which the graphs read while
 they render; `KubeForceChart` reads them with `getCanvasColors()` of
 `helpers/theme-colors.ts`. A link takes the color of its source, and the links
 of the node under the pointer are drawn thicker.
-`src/renderer/components/helpers/config.ts` has the color, icon and size of
-every kind, and `helpers/types.ts` the node and link types, built on those of
-`react-force-graph-2d`.
+`src/renderer/components/helpers/config.ts` has the name for people, color,
+icon and size of every kind, and `helpers/types.ts` the node and link types,
+built on those of `react-force-graph-2d`. The legend of the page shows the
+icon and the name of every kind, such as "Persistent Volume Claim".
 
 The page and the panel give the graph the size of their container, which
 `ElementSize` of `helpers/element-size.ts` follows with a `ResizeObserver`.
