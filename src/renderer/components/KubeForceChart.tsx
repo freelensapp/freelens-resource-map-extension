@@ -5,12 +5,19 @@ import React from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { config } from "./helpers/config";
 import { ElementSize } from "./helpers/element-size";
-import { applyMapForces, type GraphMethods, refWithSetter } from "./helpers/graph-methods";
+import {
+  applyMapForces,
+  type GraphMethods,
+  type NodePoint,
+  nodePointsOf,
+  refWithSetter,
+} from "./helpers/graph-methods";
 import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { buildNamespaceGraph, type NamespaceGraphObjects, sameGraph } from "./helpers/namespace-graph";
 import { canListMapStore, getMapStores, getNamespaceStore, type MapStores } from "./helpers/stores";
 import { getCanvasColors } from "./helpers/theme-colors";
 import styles from "./KubeForceChart.module.scss";
+import { MapNodeList } from "./map-node-list";
 import { MapTooltip } from "./tooltips/map-tooltip";
 
 import type { ChartDataSeries, LinkObject } from "./helpers/types";
@@ -34,19 +41,7 @@ interface MapStore {
   subscribe(params?: Renderer.K8sApi.KubeObjectStoreSubscribeParams): () => void;
 }
 
-/** A node drawn on the canvas, at the point of the canvas where it settled. */
-interface NodePoint {
-  id: string;
-  kind: string;
-  namespace?: string;
-  name: string;
-  x: number;
-  y: number;
-}
-
 const logPrefix = "[@freelensapp/resource-map-extension]";
-
-const pick = ({ id, kind, namespace, name }: ChartDataSeries) => ({ id, kind, namespace, name });
 
 @observer
 export class KubeForceChart extends React.Component<object, State> {
@@ -228,12 +223,8 @@ export class KubeForceChart extends React.Component<object, State> {
   // The graph reached its first zoom and stopped: the points of its nodes, for
   // the hidden list, and the data-settled mark.
   private settle() {
-    const { chart } = this;
     runInAction(() => {
-      this.nodePoints = this.nodes.map((node) => {
-        const point = chart?.graph2ScreenCoords(node.x ?? 0, node.y ?? 0) ?? { x: 0, y: 0 };
-        return { ...pick(node), x: Math.round(point.x), y: Math.round(point.y) };
-      });
+      this.nodePoints = nodePointsOf(this.chart, this.nodes);
       this.settled = true;
     });
   }
@@ -305,21 +296,7 @@ export class KubeForceChart extends React.Component<object, State> {
         onMouseMove={(event) => this.tooltip.current?.follow(event)}
       >
         <MapTooltip ref={this.tooltip} object={hoverNode?.object} />
-        <ul className={styles.nodeList} data-testid="resource-map-nodes" aria-label="Resources on the map">
-          {this.nodePoints.map((point) => (
-            <li
-              key={point.id}
-              data-kind={point.kind}
-              data-namespace={point.namespace}
-              data-name={point.name}
-              data-x={point.x}
-              data-y={point.y}
-            >
-              {point.kind} {point.namespace ? `${point.namespace}/` : ""}
-              {point.name}
-            </li>
-          ))}
-        </ul>
+        <MapNodeList points={this.nodePoints} />
 
         <ForceGraph2D
           graphData={this.state.data}

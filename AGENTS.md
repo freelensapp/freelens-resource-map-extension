@@ -298,11 +298,12 @@ selection changes, starts from no previous graph. A details map builds its graph
 in the same way, around its object and in its namespace, with the builder of its
 kind. Its node id is the kind, the namespace and the name of its object as well.
 
-When the graph of the page or the panel stops after its first zoom
-(`onEngineStop`), the map marks its container with `data-settled` and fills a
-visually hidden list, `data-testid="resource-map-nodes"`, with an item per
-node: its kind, namespace and name in `data-kind`, `data-namespace` and
-`data-name`, and its point on the canvas, from `graph2ScreenCoords`, in
+When a graph stops after its first zoom (`onEngineStop`), its map marks its
+container with `data-settled` and fills a visually hidden list,
+`data-testid="resource-map-nodes"` (`MapNodeList` of `map-node-list.tsx`),
+with an item per node: its kind, namespace and name in `data-kind`,
+`data-namespace` and `data-name`, and its point on the canvas, from
+`graph2ScreenCoords` (`nodePointsOf` of `helpers/graph-methods.ts`), in
 `data-x` and `data-y`. New data clears both. They are for the integration
 tests and the recordings of the README, which find a node on the screen at its
 point plus the position of the canvas.
@@ -1015,6 +1016,17 @@ process:
   after the kind cluster connects. The overview loads pods and workloads, but
   no Services or Ingresses: the session checks that the "Resources" panel draws
   them, that its map is 480 px high and as wide as the panel, and one canvas.
+- `details-drawers.tests.ts` connects the kind cluster, which opens on the
+  host's Cluster Overview, selects the test namespaces through the namespace
+  store, and opens the details of the test objects with
+  `Renderer.Navigation.showDetails`, run in the cluster frame. The first
+  drawer is a Service's, whose map loads the stores that no host view has
+  loaded yet; then a Deployment, a StatefulSet, a DaemonSet, an Ingress and a
+  pod. In each drawer it checks the "Resources" title, one canvas, the nodes
+  the map should hold and no error page of the boundary. It clicks the node of
+  a Deployment in the map of the Service and checks that the drawer shows the
+  Deployment, still a second later, and the node of the Helm release in the
+  map of its Deployment, which opens the release.
 
 One canvas in the container of a map shows that the guard of react-kapsule
 against the double mount of `React.StrictMode`, which Freelens dev renders in,
@@ -1022,8 +1034,14 @@ holds. The test objects are the same Deployment, Service and ConfigMap in the
 namespaces `shop` and `billing`, an Ingress with a TLS secret and a service
 backend, one without rules, one whose rule has no `http` and one with a
 `resource` backend, and the release `catalog` of the local chart, whose
-objects Helm marks with its label and annotation. The pods run a pause
-container: the map reads specs, and needs no ingress controller.
+objects Helm marks with its label and annotation, with a StatefulSet and its
+headless Service and a DaemonSet in `shop`. The pods run a pause container:
+the map reads specs, and needs no ingress controller. The drawers of a
+Deployment, a DaemonSet and a StatefulSet list their pods with the metrics of
+their namespace, which the host asks `metrics.k8s.io` for; kind has no metrics
+server, and Chromium logs the 404 of each request as an error. The error
+collector leaves out that one error by its status and URL, with an exact
+pattern, and nothing else.
 
 The tests are deterministic, so nothing retries them: the config sets no
 `retry`, and the workflow runs the step once, under `timeout 600`. A retry
@@ -1061,19 +1079,24 @@ turbo otherwise groups the output of a task until it ends, and the persistent
 
 The helpers connect the kind cluster without opening a view
 (`connectKindCluster`), so that a session opens its own as the first one after
-`disconnectKindCluster`. They open the Resource Map page from its sidebar
-entry, by the test id that the `clusterPageMenus` id `resource-map` gives it
+`disconnectKindCluster`. They open the Resource Map page from its sidebar entry,
+by the test id that the `clusterPageMenus` id `resource-map` gives it
 (`openResourceMap`), and Workloads > Overview at its route `/workloads`
 (`openWorkloadsOverview`), since its group of the sidebar may be collapsed.
 `selectNamespaces` selects the test namespaces, `shop` and `billing`, in the
-namespace filter of the open view, unless it shows them already: the first
-one alone, and the others with the key of a multiple selection held, Meta on
-macOS and Control elsewhere. The filter is the host's, and the app keeps its
-selection for every view of the cluster. `settledNodes` waits for the
-`data-settled` mark of the map and reads its hidden list of the nodes, and
-`nodePoint` gives the point of a node on the screen: its point on the canvas
-plus the position of the canvas, which Playwright gives in the coordinates of
-the page for an element of the cluster frame too. A session opens no page of
+namespace filter of the open view, unless it shows them already: the first one
+alone, and the others with the key of a multiple selection held, Meta on macOS
+and Control elsewhere. The filter is the host's, and the app keeps its selection
+for every view of the cluster. `settledNodes` waits for the `data-settled` mark
+of the map and reads its hidden list of the nodes, and `nodePoint` gives the
+point of a node on the screen: its point on the canvas plus the position of the
+canvas, scrolled into view first, which Playwright gives in the coordinates of
+the page for an element of the cluster frame too. `selectNamespacesInStore`
+selects namespaces through the namespace store, for a view with no filter,
+`openDetails` opens the details of an object by its selfLink, and `podSelfLink`
+finds the selfLink of a pod in the host's store, since the names of pods end
+with a random suffix. The helpers wait with `until`, which, unlike
+`expect.poll`, also runs in the hooks of a session. A session opens no page of
 the host whose requests log errors of their own: the Pods page asks for pod
 metrics, and kind has no metrics server. The sessions change nothing in the
 cluster.
@@ -1081,7 +1104,8 @@ cluster.
 The code the sessions share is in `integration/__tests__/extension-helpers.ts`:
 connecting to the app with the error collector, installing the extension,
 connecting and disconnecting the kind cluster, opening the views, selecting
-the namespaces, reading the nodes of a map, and the selectors. Its name does not match
+the namespaces, reading the nodes of a map, opening the details of an object,
+and the selectors. Its name does not match
 `*.tests.ts`, so Vitest does not collect it. `integration/tsconfig.json`
 compiles the directory with Node and the DOM, because the callbacks of
 `page.evaluate` run in the page, and with the types of

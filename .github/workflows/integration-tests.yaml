@@ -274,6 +274,7 @@ jobs:
           for namespace in shop billing; do
             kubectl --context kind-freelens --namespace "$namespace" rollout status deployment --timeout 180s
           done
+          kubectl --context kind-freelens --namespace shop rollout status statefulset/db daemonset/agent --timeout 180s
 
       # FREELENS_INTEGRATION_TESTING_DIR gives Freelens dev a fresh profile; the
       # app accepts it only under the system's temporary directory. A dev

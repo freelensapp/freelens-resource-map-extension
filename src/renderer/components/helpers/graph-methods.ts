@@ -40,3 +40,21 @@ export function refWithSetter<T>(onSet: (value: T | null | undefined) => void): 
     },
   };
 }
+
+/** A node drawn on the canvas, at the point of the canvas where it settled. */
+export interface NodePoint {
+  id: string;
+  kind: string;
+  namespace?: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
+/** The points of the nodes on the canvas of a graph, from its zoom transform, for the hidden list of its map. */
+export function nodePointsOf(graph: GraphMethods | undefined, nodes: readonly ChartDataSeries[]): NodePoint[] {
+  return nodes.map(({ id, kind, namespace, name, x = 0, y = 0 }) => {
+    const point = graph?.graph2ScreenCoords(x, y) ?? { x: 0, y: 0 };
+    return { id, kind, namespace, name, x: Math.round(point.x), y: Math.round(point.y) };
+  });
+}

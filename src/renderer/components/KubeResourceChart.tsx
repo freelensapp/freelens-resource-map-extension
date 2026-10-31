@@ -5,12 +5,19 @@ import React from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { config } from "./helpers/config";
 import { ElementSize } from "./helpers/element-size";
-import { applyMapForces, type GraphMethods, refWithSetter } from "./helpers/graph-methods";
+import {
+  applyMapForces,
+  type GraphMethods,
+  type NodePoint,
+  nodePointsOf,
+  refWithSetter,
+} from "./helpers/graph-methods";
 import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { sameGraph } from "./helpers/namespace-graph";
 import { canListMapStore, getMapStores, type MapStores } from "./helpers/stores";
 import { getCanvasColors } from "./helpers/theme-colors";
 import styles from "./KubeForceChart.module.scss";
+import { MapNodeList } from "./map-node-list";
 import { MapTooltip } from "./tooltips/map-tooltip";
 
 import type { DetailsGraph, DetailsGraphObjects } from "./helpers/details-graph";
@@ -65,6 +72,9 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   State
 > {
   @observable accessor isReady = false;
+  /** The graph has stopped moving and has its first zoom: its nodes stay where they are. */
+  @observable accessor settled = false;
+  @observable accessor nodePoints: readonly NodePoint[] = [];
 
   protected links: LinkObject[] = [];
   protected nodes: ChartDataSeries[] = [];
@@ -90,6 +100,7 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   private loading?: AbortController;
   private watchDisposers: (() => void)[] = [];
   private disposers: (() => void)[] = [];
+  private settleTimer?: ReturnType<typeof setTimeout>;
 
   state: Readonly<State> = {
     data: {
@@ -141,6 +152,7 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
     this.stopLoading();
     this.disposers.forEach((disposer) => disposer());
     this.disposers.length = 0;
+    clearTimeout(this.settleTimer);
     this.nodes = [];
     this.links = [];
   }
@@ -205,12 +217,30 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
     if (!previous.nodes.length || !sameGraph(graph, previous)) {
       this.nodes = graph.nodes;
       this.links = graph.links;
+      this.unsettle();
       this.setState({
         data: graph,
         highlightLinks: new Set<LinkObject>(),
       });
     }
   };
+
+  // The graph reached its first zoom and stopped: the points of its nodes, for
+  // the hidden list, and the data-settled mark.
+  private settle() {
+    runInAction(() => {
+      this.nodePoints = nodePointsOf(this.chart, this.nodes);
+      this.settled = true;
+    });
+  }
+
+  private unsettle() {
+    clearTimeout(this.settleTimer);
+    runInAction(() => {
+      this.settled = false;
+      this.nodePoints = [];
+    });
+  }
 
   /** The nodes and the links of the map; a subclass builds them for its kind, and this class draws none. */
   protected buildGraph(_objects: DetailsGraphObjects, _previous: DetailsGraph): DetailsGraph {
@@ -277,9 +307,11 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
         <div
           ref={this.followContainer}
           className={`${styles.kubeForceChart} ${styles.details}`}
+          data-settled={this.settled || undefined}
           onMouseMove={(event) => this.tooltip.current?.follow(event)}
         >
           <MapTooltip ref={this.tooltip} object={hoverNode?.object} />
+          <MapNodeList points={this.nodePoints} />
           <ForceGraph2D
             graphData={this.state.data}
             ref={this.chartRef}
@@ -289,13 +321,16 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
             maxZoom={1.2}
             cooldownTicks={200}
             onEngineStop={() => {
-              if (!this.initZoomDone) {
-                if (this.nodes.length > 10) {
-                  this.chart?.zoomToFit(400);
-                } else {
-                  this.chart?.zoom(1.2);
-                }
+              if (this.initZoomDone) {
+                this.settle();
+              } else if (this.nodes.length > 10) {
                 this.initZoomDone = true;
+                this.chart?.zoomToFit(400);
+                this.settleTimer = setTimeout(() => this.settle(), 400);
+              } else {
+                this.initZoomDone = true;
+                this.chart?.zoom(1.2);
+                this.settle();
               }
             }}
             linkWidth={(link) => (this.state.highlightLinks.has(link) ? 2 : 1)}

@@ -13,7 +13,6 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium } from "playwright";
-import { expect } from "vitest";
 
 import type { Browser, ConsoleMessage, Frame, Locator, Page } from "playwright";
 
@@ -56,6 +55,13 @@ const ansiEscapePattern = /\u001b\[[0-9;]*m/g;
 // twice and aborts the requests of the first mount, so the line comes and goes
 // with the timing of a run. It names no request, and says nothing about the
 // extension.
+// The drawers of a Deployment, a DaemonSet and a StatefulSet list their pods
+// with the metrics of their namespace, which the host asks metrics.k8s.io
+// for, and handles the failure; kind has no metrics server, so each request
+// gets a 404, which Chromium logs as an error. Only that one is left out.
+const missingPodMetricsPattern =
+  /^\[renderer\] Failed to load resource: the server responded with a status of 404 \((?:Not Found)?\) \(https:\/\/[0-9a-f]+\.renderer\.freelens\.app(?::\d+)?\/api-kube\/apis\/metrics\.k8s\.io\/v1beta1\/namespaces\/[a-z0-9-]+\/pods:0:0\)$/;
+
 const abortedProxyRequestPattern = /proxy_server\.go:\d+\] Error while proxying request: context canceled$/;
 
 /**
@@ -173,7 +179,13 @@ function collectErrors(window: Page) {
       const worker = msg.worker();
       const location = `${url ? ` (${url}:${lineNumber}:${columnNumber})` : ""}${worker ? ` (worker ${worker.url()})` : ""}`;
       const text = msg.text().replaceAll(ansiEscapePattern, "");
-      const index = errorLogs.push(`[renderer] ${text}${location}`) - 1;
+      const entry = `[renderer] ${text}${location}`;
+
+      if (missingPodMetricsPattern.test(entry)) {
+        return;
+      }
+
+      const index = errorLogs.push(entry) - 1;
 
       if (!text.trim() || /^[A-Z]\w*$/.test(text)) {
         pendingDescriptions.push(
@@ -523,6 +535,29 @@ export async function openWorkloadsOverview(frame: Frame) {
   await frame.locator("h5").getByText("Resources", { exact: true }).waitFor(viewTimeout);
 }
 
+/**
+ * Waits until `read` gives a value that `accept` takes, and returns it, or
+ * fails after the timeout of a view with the last value. Unlike `expect.poll`,
+ * it also runs in the hooks of a session.
+ */
+async function until<T>(what: string, read: () => T | Promise<T>, accept: (value: T) => boolean): Promise<T> {
+  const deadline = Date.now() + viewTimeout.timeout;
+
+  for (;;) {
+    const value = await read();
+
+    if (accept(value)) {
+      return value;
+    }
+
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${what}, last ${JSON.stringify(value)}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
 /** The namespaces of the cluster context, which the filter shows. */
 async function selectedNamespaces(frame: Frame): Promise<string[]> {
   return frame.evaluate(() =>
@@ -564,7 +599,11 @@ export async function selectNamespaces(frame: Frame, namespaces: readonly string
     }
   }
 
-  await expect.poll(() => selectedNamespaces(frame), viewTimeout).toEqual(wanted);
+  await until(
+    `the namespaces ${wanted.join(", ")}`,
+    () => selectedNamespaces(frame),
+    (selected) => selected.join() === wanted.join(),
+  );
   await input.press("Escape");
 }
 
@@ -607,14 +646,73 @@ export function nodeKey({ kind, namespace, name }: Pick<MapNode, "kind" | "names
 /**
  * The point of a node on the screen: its point on the canvas plus the position
  * of the canvas, which Playwright gives in the coordinates of the page, also
- * for an element of the cluster frame.
+ * for an element of the cluster frame. The canvas is scrolled into view first:
+ * the map of a details panel can be below the end of the drawer.
  */
 export async function nodePoint(frame: Frame, node: MapNode): Promise<{ x: number; y: number }> {
-  const box = await mapOf(frame).locator("canvas").boundingBox();
+  const canvas = mapOf(frame).locator("canvas");
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
 
   if (!box) {
     throw new Error("The map has no visible canvas");
   }
 
   return { x: box.x + node.x, y: box.y + node.y };
+}
+
+/**
+ * Selects the namespaces through the host's namespace store, in the cluster
+ * frame, for a session whose first view has no namespace filter.
+ */
+export async function selectNamespacesInStore(frame: Frame, namespaces: readonly string[]) {
+  await frame.evaluate(
+    (names) => globalThis.FreelensExtensionApi.Renderer?.K8sApi.namespaceStore.selectNamespaces(names),
+    [...namespaces],
+  );
+  const wanted = [...namespaces].sort();
+  await until(
+    `the namespaces ${wanted.join(", ")}`,
+    () => selectedNamespaces(frame),
+    (selected) => selected.join() === wanted.join(),
+  );
+}
+
+/** The selfLink of the object whose details the drawer shows, from the location of the cluster frame. */
+export function shownDetails(frame: Frame): string | null {
+  return new URL(frame.url()).searchParams.get("kube-details");
+}
+
+/**
+ * Opens the details of an object with `Renderer.Navigation.showDetails`, run
+ * in the cluster frame, and waits for the map of the extension in the drawer.
+ */
+export async function openDetails(frame: Frame, selfLink: string): Promise<Locator> {
+  console.log(`show details of ${selfLink}`);
+  await frame.evaluate((link) => globalThis.FreelensExtensionApi.Renderer?.Navigation.showDetails(link), selfLink);
+  await until(
+    `the details of ${selfLink}`,
+    () => shownDetails(frame),
+    (shown) => shown === selfLink,
+  );
+  const drawer = frame.locator(".Drawer.KubeObjectDetails");
+  await drawer.getByText("Resources", { exact: true }).waitFor(viewTimeout);
+  return drawer;
+}
+
+/** The selfLink of a pod of the namespace whose name starts with the prefix, from the host's store of the pods. */
+export async function podSelfLink(frame: Frame, namespace: string, prefix: string): Promise<string> {
+  const selfLink = await frame.evaluate(
+    ([ns, start]) =>
+      globalThis.FreelensExtensionApi.Renderer?.K8sApi.podsStore.items.find(
+        (pod) => pod.getNs() === ns && pod.getName().startsWith(start),
+      )?.selfLink,
+    [namespace, prefix] as const,
+  );
+
+  if (!selfLink) {
+    throw new Error(`No pod ${namespace}/${prefix}* in the store of the pods`);
+  }
+
+  return selfLink;
 }
