@@ -1,0 +1,89 @@
+.tooltip {
+  display: flex;
+  flex-direction: column;
+  padding: 3px;
+  font-size: 12px;
+  color: rgb(160, 160, 160);
+
+  // the host's components and the status classes the tooltips set, which are global class names
+  :global(.DrawerItem) {
+    :global(.name),
+    :global(.value) {
+      color: rgb(160, 160, 160);
+    }
+  }
+
+  :global(.conditions) {
+    :global(.Badge) {
+      &:global(.available) {
+        color: white;
+        background-color: var(--colorOk);
+      }
+
+      &:global(.progressing) {
+        color: white;
+        background-color: var(--colorInfo);
+      }
+
+      &:global(.replica-failure) {
+        color: white;
+        background-color: var(--colorError);
+      }
+    }
+  }
+
+  :global(.running),
+  :global(.succeeded) {
+    color: var(--colorOk);
+  }
+
+  :global(.failed) {
+    color: var(--colorError);
+  }
+
+  :global(.pending),
+  :global(.containercreating) {
+    color: var(--colorWarning);
+  }
+
+  :global(.terminated),
+  :global(.terminating) {
+    color: var(--colorTerminated);
+  }
+
+  :global(.StatusBrick) {
+    &:global(.running):not(:global(.ready)) {
+      background: var(--colorWarning);
+    }
+
+    &:global(.terminated),
+    &:global(.completed) {
+      color: white;
+      background: var(--colorTerminated);
+    }
+
+    &:global(.pending),
+    &:global(.containercreating),
+    &:global(.waiting) {
+      color: white;
+      background: var(--colorWarning);
+    }
+  }
+
+  :global(.Table) :global(.path):empty::after {
+    content: "\2014";
+  }
+}
+
+.ingress {
+  min-width: 400px;
+}
+
+.rules {
+  margin-top: 2px;
+  margin-bottom: 16px;
+}
+
+.hostTitle {
+  font-weight: bold;
+}

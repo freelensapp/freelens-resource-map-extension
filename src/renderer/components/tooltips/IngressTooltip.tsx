@@ -1,52 +1,16 @@
-import { Renderer } from "@freelensapp/extensions";
-import { hasTypedProperty, isString } from "@freelensapp/utilities";
+import { Common, Renderer } from "@freelensapp/extensions";
 import React from "react";
-import { RequireExactlyOne } from "type-fest";
+import styles from "./tooltip.module.scss";
 
 export interface IngressTooltipProps {
   obj: Renderer.K8sApi.Ingress;
-}
-
-// extensions/v1beta1
-interface ExtensionsBackend {
-  serviceName?: string;
-  servicePort?: number | string;
-}
-
-// networking.k8s.io/v1
-interface NetworkingBackend {
-  service?: IngressService;
-}
-
-interface TypedLocalObjectReference {
-  apiGroup?: string;
-  kind: string;
-  name: string;
-}
-
-type IngressBackend = (ExtensionsBackend | NetworkingBackend) & {
-  resource?: TypedLocalObjectReference;
-};
-
-interface IngressService {
-  name: string;
-  port: RequireExactlyOne<{
-    name: string;
-    number: number;
-  }>;
-}
-
-const unknownPortString = "<unknown>";
-
-function isExtensionsBackend(backend: IngressBackend): backend is ExtensionsBackend {
-  return hasTypedProperty(backend, "serviceName", isString);
 }
 
 export class IngressTooltip extends React.Component<IngressTooltipProps> {
   render() {
     const obj = this.props.obj;
     return (
-      <div className="KubeResourceChartTooltip ingress-tooltip flex column">
+      <div className={Common.Util.cssNames(styles.tooltip, styles.ingress)}>
         <div>
           <b>
             {obj.kind} - {obj.getName()}
@@ -54,9 +18,6 @@ export class IngressTooltip extends React.Component<IngressTooltipProps> {
         </div>
         <hr />
         <Renderer.Component.DrawerItem name="Namespace">{obj.getNs()}</Renderer.Component.DrawerItem>
-        {/* <Renderer.Component.DrawerItem name="Created">
-           {obj.getAge()} ago
-        </Renderer.Component.DrawerItem> */}
         {this.renderPaths(obj)}
       </div>
     );
@@ -71,16 +32,12 @@ export class IngressTooltip extends React.Component<IngressTooltipProps> {
 
     return rules.map((rule, index) => {
       return (
-        <div className="rules" key={index}>
-          {rule.host && (
-            <div className="host-title">
-              <>Host: {rule.host}</>
-            </div>
-          )}
+        <div className={styles.rules} key={index}>
+          {rule.host && <div className={styles.hostTitle}>Host: {rule.host}</div>}
           {rule.http && (
             <Renderer.Component.Table className="paths">
               {rule.http.paths.map((path, index) => {
-                const backend = this.getBackendServiceNamePort(path.backend);
+                const backend = Renderer.K8sApi.getBackendServiceNamePort(path.backend);
 
                 return (
                   <Renderer.Component.TableRow key={index}>
@@ -96,23 +53,5 @@ export class IngressTooltip extends React.Component<IngressTooltipProps> {
         </div>
       );
     });
-  }
-
-  getBackendServiceNamePort(backend: IngressBackend | undefined): string {
-    if (!backend) {
-      return unknownPortString;
-    }
-
-    if (isExtensionsBackend(backend)) {
-      return `${backend.serviceName}:${backend.servicePort}`;
-    }
-
-    if (backend.service) {
-      const { name, port } = backend.service;
-
-      return `${name}:${port.number ?? port.name}`;
-    }
-
-    return unknownPortString;
   }
 }

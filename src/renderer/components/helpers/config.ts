@@ -14,7 +14,6 @@ type ConfigItem = {
   icon?: string;
   size?: number;
   img?: HTMLImageElement;
-  tooltipClass?: any;
 };
 
 type Config = {

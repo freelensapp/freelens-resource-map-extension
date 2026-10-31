@@ -1,35 +1,21 @@
-import { Renderer } from "@freelensapp/extensions";
+import type { Renderer } from "@freelensapp/extensions";
+import type { LinkObject as GraphLinkObject, NodeObject as GraphNodeObject } from "react-force-graph-2d";
 
-export type NodeObject = object & {
-  id?: string | number;
-  x?: number;
-  y?: number;
-  z?: number;
-  vx?: number;
-  vy?: number;
-  vz?: number;
-  fx?: number;
-  fy?: number;
-  fz?: number;
-};
-
-export type LinkObject = object & {
-  source?: string | number | NodeObject;
-  target?: string | number | NodeObject;
-};
-
-export interface ChartDataSeries extends NodeObject {
-  id?: string | number;
+/** The data of a node of the map: the object it stands for and how it is drawn. */
+export interface ChartNodeData {
+  id: string;
   object: Renderer.K8sApi.KubeObject;
   kind: string;
-  name?: string;
+  name: string;
   namespace?: string;
   image?: HTMLImageElement;
   value?: number;
-  collapsed?: boolean;
-  disabled?: boolean;
   color?: string;
-  tooltipHTML?: string;
-  links?: LinkObject[];
   visible?: boolean;
 }
+
+/** A node as force-graph holds it, with the position it computes. */
+export type ChartDataSeries = GraphNodeObject<ChartNodeData>;
+
+/** A link between two nodes, by node or by id until force-graph resolves it. */
+export type LinkObject = GraphLinkObject<ChartNodeData>;

@@ -1,6 +1,4 @@
 import { Renderer } from "@freelensapp/extensions";
-// import { observer } from "mobx-react";
-// import { ChartDataSeries } from "./helpers/types";
 import { KubeResourceChart } from "./KubeResourceChart";
 
 export class KubeIngressChart extends KubeResourceChart {
@@ -22,22 +20,21 @@ export class KubeIngressChart extends KubeResourceChart {
     const nodes = [...this.nodes];
     const links = [...this.links];
 
-    //this.generateControllerNode();
     const { object: ingress } = this.props;
     this.generateIngress(ingress as Renderer.K8sApi.Ingress);
 
     if (nodes.length != this.nodes.length || links.length != this.links.length) {
-      // TODO: Improve the logic
       this.updateState(this.nodes, this.links);
     }
   };
 
   protected generateIngress(ingress: Renderer.K8sApi.Ingress) {
     const ingressNode = this.getIngressNode(ingress);
-    ingress.spec.rules.forEach((rule) => {
-      rule.http.paths.forEach((path) => {
-        const serviceName = (path.backend as any).serviceName || (path.backend as any).service?.name;
-        const service = this.serviceStore.getByName(serviceName, ingress.getNs());
+    ingress.spec.rules?.forEach((rule) => {
+      rule.http?.paths.forEach((path) => {
+        const backend = path.backend as { serviceName?: string; service?: { name?: string } } | undefined;
+        const serviceName = backend?.serviceName || backend?.service?.name;
+        const service = serviceName ? this.serviceStore.getByName(serviceName, ingress.getNs()) : undefined;
         if (service) {
           const selector = service.spec.selector;
           const serviceNode = this.generateNode(service);
@@ -47,8 +44,8 @@ export class KubeIngressChart extends KubeResourceChart {
 
           if (selector) {
             this.podsStore
-              .getAllByNs(ingress.getNs())
-              .filter((item: Renderer.K8sApi.Pod) => {
+              .getAllByNs(ingress.getNs() ?? "")
+              .filter((item) => {
                 const itemLabels = item.metadata.labels || {};
                 return Object.entries(selector).every(([key, value]) => {
                   return itemLabels[key] === value;

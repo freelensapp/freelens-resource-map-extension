@@ -1,5 +1,4 @@
 import { Renderer } from "@freelensapp/extensions";
-// import { observer } from "mobx-react";
 import { KubeResourceChart } from "./KubeResourceChart";
 
 export class KubeServiceChart extends KubeResourceChart {
@@ -21,7 +20,6 @@ export class KubeServiceChart extends KubeResourceChart {
     const nodes = [...this.nodes];
     const links = [...this.links];
 
-    //this.generateControllerNode();
     const { object: service } = this.props;
     const selector = (service as Renderer.K8sApi.Service).spec.selector;
 
@@ -29,8 +27,8 @@ export class KubeServiceChart extends KubeResourceChart {
 
     if (selector) {
       this.podsStore
-        .getAllByNs(service.getNs())
-        .filter((item: Renderer.K8sApi.Pod) => {
+        .getAllByNs(service.getNs() ?? "")
+        .filter((item) => {
           const itemLabels = item.metadata.labels || {};
           return Object.entries(selector).every(([key, value]) => {
             return itemLabels[key] === value;
@@ -42,7 +40,6 @@ export class KubeServiceChart extends KubeResourceChart {
     this.generateIngresses();
 
     if (nodes.length != this.nodes.length || links.length != this.links.length) {
-      // TODO: Improve the logic
       this.updateState(this.nodes, this.links);
     }
   };
@@ -51,13 +48,11 @@ export class KubeServiceChart extends KubeResourceChart {
     const { ingressStore } = this;
     const { object: service } = this.props;
 
-    ingressStore.getAllByNs(service.getNs()).forEach((ingress: Renderer.K8sApi.Ingress) => {
-      ingress.spec.rules.forEach((rule) => {
-        rule.http.paths.forEach((path) => {
-          if (
-            (path.backend as any).serviceName == service.getName() ||
-            (path.backend as any).service.name == service.getName()
-          ) {
+    ingressStore.getAllByNs(service.getNs() ?? "").forEach((ingress) => {
+      ingress.spec.rules?.forEach((rule) => {
+        rule.http?.paths.forEach((path) => {
+          const backend = path.backend as { serviceName?: string; service?: { name?: string } } | undefined;
+          if (backend?.serviceName == service.getName() || backend?.service?.name == service.getName()) {
             const serviceNode = this.generateNode(service);
             const ingressNode = this.getIngressNode(ingress);
             if (serviceNode) {

@@ -1,5 +1,3 @@
-// import { Renderer } from "@freelensapp/extensions";
-// import { observer } from "mobx-react";
 import { KubeResourceChart } from "./KubeResourceChart";
 
 export class KubeControllerChart extends KubeResourceChart {
@@ -25,7 +23,6 @@ export class KubeControllerChart extends KubeResourceChart {
     this.generateIngresses();
 
     if (nodes.length != this.nodes.length || links.length != this.links.length) {
-      // TODO: Improve the logic
       this.updateState(this.nodes, this.links);
     }
   };

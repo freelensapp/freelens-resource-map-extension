@@ -1,0 +1,29 @@
+.legend {
+  display: flex;
+  flex-direction: column;
+  padding: var(--padding);
+  background: var(--layoutBackground);
+}
+
+.title {
+  text-align: center;
+  font-size: 110%;
+  color: var(--textColorSecondary);
+}
+
+.resource {
+  display: flex;
+  align-items: center;
+  gap: var(--padding);
+  padding: 7px 0;
+  border-right: 10px solid var(--color, transparent);
+}
+
+.icon {
+  border: none;
+  border-radius: 50%;
+}
+
+.kind {
+  padding-right: 10px;
+}
