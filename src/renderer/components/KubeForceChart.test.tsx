@@ -5,7 +5,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { compareShallow, getObserverTree, observable, reaction, runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pod, secret } from "../../../test/kube-objects";
+import { kubeObject, pod, secret } from "../../../test/kube-objects";
 import { KubeForceChart } from "./KubeForceChart";
 
 import type { IObservableArray } from "mobx";
@@ -259,6 +259,27 @@ describe("KubeForceChart", () => {
     unmount();
 
     expect(observer?.disconnected).toBe(true);
+  });
+
+  it("opens the details of the object of a node when the node is clicked", async () => {
+    const web1 = pod("web-1", "shop");
+    Object.assign(web1, { selfLink: "/api/v1/namespaces/shop/pods/web-1" });
+    host.stores.pods.items.replace([web1]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    act(() => graph.props?.onNodeClick(graph.props.graphData.nodes[0], new MouseEvent("click")));
+
+    expect(Renderer.Navigation.showDetails).toHaveBeenCalledWith("/api/v1/namespaces/shop/pods/web-1");
+    expect(Renderer.Navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it("says that there is nothing to draw when the stores hold no object but config maps", async () => {
+    host.stores.configMaps.items.replace([kubeObject("ConfigMap", { name: "web-config", namespace: "shop" })]);
+    render(<KubeForceChart />);
+
+    expect(await screen.findByText("No visualizable resources found in this namespace.")).toBeDefined();
+    expect(graph.props).toBeUndefined();
   });
 
   it("opens a Helm release on its route when its node is clicked", async () => {
