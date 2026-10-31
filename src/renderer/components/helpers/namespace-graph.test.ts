@@ -57,14 +57,14 @@ describe("buildNamespaceGraph", () => {
       ),
     );
     const shopIds = [
-      "DaemonSet-web-agent",
-      "Deployment-web",
-      "Ingress-web",
-      "PersistentVolumeClaim-web",
-      "Pod-web-1",
-      "Secret-web-credentials",
-      "Service-web",
-      "StatefulSet-web-db",
+      "DaemonSet/shop/web-agent",
+      "Deployment/shop/web",
+      "Ingress/shop/web",
+      "PersistentVolumeClaim/shop/web",
+      "Pod/shop/web-1",
+      "Secret/shop/web-credentials",
+      "Service/shop/web",
+      "StatefulSet/shop/web-db",
     ];
 
     expect(nodeIds(buildNamespaceGraph(input, ["shop"]))).toEqual(shopIds);
@@ -83,8 +83,20 @@ describe("buildNamespaceGraph", () => {
 
     const graph = buildNamespaceGraph(input, ["shop", "billing"]);
 
-    expect(linkIds(graph)).toEqual(["Pod-web-1 -> Service-web"]);
-    expect(nodeIds(graph)).toContain("Service-headless");
+    expect(linkIds(graph)).toEqual(["Pod/shop/web-1 -> Service/shop/web"]);
+    expect(nodeIds(graph)).toContain("Service/shop/headless");
+  });
+
+  it("draws objects of the same kind and name in two namespaces as two nodes, each linked in its own namespace", () => {
+    const input = objects({
+      pods: [pod("web-1", "shop", { labels: { app: "web" } }), pod("web-1", "billing", { labels: { app: "web" } })],
+      services: [service("web", "shop", { app: "web" }), service("web", "billing", { app: "web" })],
+    });
+
+    const graph = buildNamespaceGraph(input, ["shop", "billing"]);
+
+    expect(nodeIds(graph)).toEqual(["Pod/billing/web-1", "Pod/shop/web-1", "Service/billing/web", "Service/shop/web"]);
+    expect(linkIds(graph)).toEqual(["Pod/billing/web-1 -> Service/billing/web", "Pod/shop/web-1 -> Service/shop/web"]);
   });
 
   it("links an Ingress to the Services of its backends and to its TLS Secret", () => {
@@ -116,11 +128,16 @@ describe("buildNamespaceGraph", () => {
 
     const graph = buildNamespaceGraph(input, ["shop"]);
 
-    expect(nodeIds(graph)).toEqual(["Ingress-storefront", "Secret-storefront-tls", "Service-api", "Service-web"]);
+    expect(nodeIds(graph)).toEqual([
+      "Ingress/shop/storefront",
+      "Secret/shop/storefront-tls",
+      "Service/shop/api",
+      "Service/shop/web",
+    ]);
     expect(linkIds(graph)).toEqual([
-      "Ingress-storefront -> Secret-storefront-tls",
-      "Ingress-storefront -> Service-api",
-      "Ingress-storefront -> Service-web",
+      "Ingress/shop/storefront -> Secret/shop/storefront-tls",
+      "Ingress/shop/storefront -> Service/shop/api",
+      "Ingress/shop/storefront -> Service/shop/web",
     ]);
   });
 
@@ -153,13 +170,13 @@ describe("buildNamespaceGraph", () => {
     const graph = buildNamespaceGraph(input, ["shop"]);
 
     expect(nodeIds(graph)).toEqual([
-      "Ingress-bucket",
-      "Ingress-no-http",
-      "Ingress-no-rules",
-      "Ingress-storefront",
-      "Service-web",
+      "Ingress/shop/bucket",
+      "Ingress/shop/no-http",
+      "Ingress/shop/no-rules",
+      "Ingress/shop/storefront",
+      "Service/shop/web",
     ]);
-    expect(linkIds(graph)).toEqual(["Ingress-storefront -> Service-web"]);
+    expect(linkIds(graph)).toEqual(["Ingress/shop/storefront -> Service/shop/web"]);
   });
 
   it("links a controller to its pods, and to the Helm release named by its labels or its annotations", () => {
@@ -192,11 +209,11 @@ describe("buildNamespaceGraph", () => {
     const graph = buildNamespaceGraph(input, ["shop"]);
 
     expect(linkIds(graph)).toEqual([
-      "DaemonSet-agent -> Pod-agent-x2k9p",
-      "Deployment-web -> HelmRelease-storefront",
-      "Deployment-web -> Pod-web-1",
-      "StatefulSet-db -> HelmRelease-storefront",
-      "StatefulSet-db -> Pod-db-0",
+      "DaemonSet/shop/agent -> Pod/shop/agent-x2k9p",
+      "Deployment/shop/web -> HelmRelease/shop/storefront",
+      "Deployment/shop/web -> Pod/shop/web-1",
+      "StatefulSet/shop/db -> HelmRelease/shop/storefront",
+      "StatefulSet/shop/db -> Pod/shop/db-0",
     ]);
     expectNoDuplicates(graph);
   });
@@ -207,7 +224,7 @@ describe("buildNamespaceGraph", () => {
     });
 
     expect(linkIds(buildNamespaceGraph(input, ["shop"]))).toEqual([
-      "Secret-sh.helm.release.v1.storefront.v1 -> HelmRelease-storefront",
+      "Secret/shop/sh.helm.release.v1.storefront.v1 -> HelmRelease/shop/storefront",
     ]);
   });
 
@@ -243,12 +260,12 @@ describe("buildNamespaceGraph", () => {
     const graph = buildNamespaceGraph(input, ["shop"]);
 
     expect(linkIds(graph)).toEqual([
-      "ConfigMap-nginx-conf -> Pod-web-1",
-      "PersistentVolumeClaim-web-data -> Pod-web-1",
-      "Pod-web-1 -> ConfigMap-web-config",
-      "Pod-web-1 -> Secret-db-credentials",
-      "Pod-web-1 -> Secret-web-secrets",
-      "Secret-web-certs -> Pod-web-1",
+      "ConfigMap/shop/nginx-conf -> Pod/shop/web-1",
+      "PersistentVolumeClaim/shop/web-data -> Pod/shop/web-1",
+      "Pod/shop/web-1 -> ConfigMap/shop/web-config",
+      "Pod/shop/web-1 -> Secret/shop/db-credentials",
+      "Pod/shop/web-1 -> Secret/shop/web-secrets",
+      "Secret/shop/web-certs -> Pod/shop/web-1",
     ]);
     expectNoDuplicates(graph);
   });
@@ -265,7 +282,7 @@ describe("buildNamespaceGraph", () => {
 
     const graph = buildNamespaceGraph(input, ["shop"]);
 
-    expect(nodeIds(graph)).toEqual(["Pod-web-1", "Secret-db-credentials"]);
+    expect(nodeIds(graph)).toEqual(["Pod/shop/web-1", "Secret/shop/db-credentials"]);
     expect(graph.links).toEqual([]);
   });
 
@@ -316,8 +333,8 @@ describe("buildNamespaceGraph", () => {
 
     expect(second.links).toHaveLength(2);
     expect(second.links).toContain(link);
-    expect(link.source).toBe(second.nodes.find((node) => node.id === "Deployment-web"));
-    expect(link.target).toBe(second.nodes.find((node) => node.id === "Pod-web-1"));
+    expect(link.source).toBe(second.nodes.find((node) => node.id === "Deployment/shop/web"));
+    expect(link.target).toBe(second.nodes.find((node) => node.id === "Pod/shop/web-1"));
   });
 });
 
@@ -335,6 +352,8 @@ describe("sameGraph", () => {
     expect(sameGraph({ nodes: graph.nodes, links: [{ source: web1, target: deployment }] }, graph)).toBe(false);
     expect(sameGraph({ nodes: graph.nodes, links: [] }, graph)).toBe(false);
     expect(sameGraph({ nodes: [deployment], links: graph.links }, graph)).toBe(false);
-    expect(sameGraph({ nodes: [deployment, { ...web1, id: "Pod-web-2" }], links: graph.links }, graph)).toBe(false);
+    expect(sameGraph({ nodes: [deployment, { ...web1, id: "Pod/shop/web-2" }], links: graph.links }, graph)).toBe(
+      false,
+    );
   });
 });

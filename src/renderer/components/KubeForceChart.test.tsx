@@ -149,31 +149,31 @@ describe("KubeForceChart", () => {
   it("draws the selected namespaces when a store changes, and nothing of the others", async () => {
     host.stores.pods.items.replace([pod("web-1", "shop"), pod("ledger-1", "billing")]);
     render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
 
     act(() => {
       runInAction(() => host.stores.pods.items.push(pod("web-2", "shop")));
     });
 
-    expect(drawnIds()).toEqual(["Pod-web-1", "Pod-web-2"]);
+    expect(drawnIds()).toEqual(["Pod/shop/web-1", "Pod/shop/web-2"]);
   });
 
   it("draws the namespaces of a new selection", async () => {
     host.stores.pods.items.replace([pod("web-1", "shop"), pod("ledger-1", "billing")]);
     render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
 
     act(() => {
       selection.replace(["billing"]);
     });
 
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-ledger-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/billing/ledger-1"]));
   });
 
   it("shows the tooltip of the hovered node, and hides it when the pointer leaves", async () => {
     host.stores.pods.items.replace([pod("web-1", "shop")]);
     render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
     const tooltip = screen.getByTestId("resource-map-tooltip");
     expect(tooltip.style.display).toBe("none");
 
@@ -192,7 +192,7 @@ describe("KubeForceChart", () => {
       secret("sh.helm.release.v1.storefront.v1", "shop", "helm.sh/release.v1", { name: "storefront" }),
     ]);
     render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toContain("HelmRelease-storefront"));
+    await waitFor(() => expect(drawnIds()).toContain("HelmRelease/shop/storefront"));
     const release = graph.props?.graphData.nodes.find((node) => node.kind === "HelmRelease");
 
     act(() => release && graph.props?.onNodeClick(release, new MouseEvent("click")));
@@ -207,7 +207,7 @@ describe("KubeForceChart", () => {
         <KubeForceChart />
       </React.StrictMode>,
     );
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
 
     expect(stores().map((store) => store.watches)).toEqual(stores().map(() => 1));
 
@@ -241,7 +241,7 @@ describe("KubeForceChart", () => {
     host.stores.pods.items.replace([pod("web-1", "shop")]);
     host.stores.secrets.items.replace([secret("db-credentials", "shop")]);
     render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
 
     expect(host.stores.secrets.loads).toBe(0);
     expect(host.stores.secrets.watches).toBe(0);
@@ -252,7 +252,7 @@ describe("KubeForceChart", () => {
     host.stores.secrets.pending = Promise.resolve(new Error("Failed to load api/v1/secrets"));
     host.stores.pods.items.replace([pod("web-1", "shop")]);
     render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
 
     expect(Common.logger.warn).toHaveBeenCalledWith(
       "[@freelensapp/resource-map-extension]: cannot list the Secret objects",
@@ -264,7 +264,7 @@ describe("KubeForceChart", () => {
   it("sets its forces on the graph once the graph has mounted", async () => {
     host.stores.pods.items.replace([pod("web-1", "shop")]);
     render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
 
     expect(graph.methods.d3Force).toHaveBeenCalledWith("charge", expect.any(Function));
     expect(graph.methods.d3Force).toHaveBeenCalledWith("collide", expect.any(Function));
@@ -274,7 +274,7 @@ describe("KubeForceChart", () => {
   it("marks itself settled, with the points of its nodes, when the graph stops, and not when its data changes", async () => {
     host.stores.pods.items.replace([pod("web-1", "shop")]);
     const { container } = render(<KubeForceChart />);
-    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
     const map = () => container.querySelector("[data-settled]");
     expect(map()).toBeNull();
 

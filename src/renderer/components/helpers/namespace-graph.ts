@@ -67,6 +67,11 @@ export function buildNamespaceGraph(
   return { nodes: builder.nodes, links: builder.links };
 }
 
+// The id of the node of an object: its kind, namespace and name.
+function nodeId(object: KubeObject) {
+  return `${object.kind}/${object.getNs() ?? ""}/${object.getName()}`;
+}
+
 // The ids of the ends of a link, which force-graph turns from ids into nodes.
 function linkKey(link: LinkObject) {
   const id = (end: LinkObject["source"]) => (typeof end === "object" ? end.id : end);
@@ -80,6 +85,7 @@ class NamespaceGraphBuilder {
   readonly nodes: ChartDataSeries[] = [];
   readonly links: LinkObject[] = [];
   private readonly linkKeys = new Set<string>();
+  private readonly nodesById = new Map<string, ChartDataSeries>();
   private readonly previousNodes: Map<string, ChartDataSeries>;
   private readonly previousLinks: Map<string, LinkObject>;
 
@@ -91,20 +97,17 @@ class NamespaceGraphBuilder {
     this.previousLinks = new Map(previous.links.map((link) => [linkKey(link), link]));
   }
 
-  // The node of an object of the same kind and name in any namespace.
   findNode(object: KubeObject) {
-    return this.nodes.find(
-      (node) => node.kind == object.kind && node.namespace && object.getNs() && node.name == object.getName(),
-    );
+    return this.nodesById.get(nodeId(object));
   }
 
   addNode(object: KubeObject): ChartDataSeries {
-    const existingNode = this.findNode(object);
+    const id = nodeId(object);
+    const existingNode = this.nodesById.get(id);
     if (existingNode) {
       return existingNode;
     }
 
-    const id = `${object.kind}-${object.getName()}`;
     const { color, img, size } = config[object.kind.toLowerCase()];
     const node: ChartDataSeries = Object.assign(this.previousNodes.get(id) ?? {}, {
       id,
@@ -118,6 +121,7 @@ class NamespaceGraphBuilder {
       visible: true,
     });
     this.nodes.push(node);
+    this.nodesById.set(id, node);
     return node;
   }
 

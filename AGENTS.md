@@ -268,10 +268,12 @@ do not clear it.
 
 On the page and the panel, `buildNamespaceGraph` of `helpers/namespace-graph.ts`
 builds the nodes and the links from the stores' items, the selected namespaces
-and the previous graph; it reads no store and starts no reaction. It reuses
-the objects of the previous graph: a node whose id it builds again is the same
-node object, with its object and color refreshed, and so is a link whose ends
-it builds again. force-graph keeps the position of a node, and the picking
+and the previous graph; it reads no store and starts no reaction. The id of a
+node is the kind, the namespace and the name of its object, so two objects of
+the same kind and name in two namespaces are two nodes. It reuses the objects
+of the previous graph: a node whose id it builds again is the same node
+object, with its object and color refreshed, and so is a link whose ends it
+builds again. force-graph keeps the position of a node, and the picking
 color of a node or a link, on the object itself, and its color registry frees
 nothing, so new copies of the same nodes and links would fill it up. A change
 in a store builds the graph again from the previous one, and a node that
