@@ -95,6 +95,8 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
   private readonly stores = getMapStores();
 
   private listable = new Set<keyof MapStores>();
+  // The selection of the filter, which the one reaction of the view keeps.
+  private namespaces?: string[];
   private kubeObjectStores: MapStore[] = [];
   private loading?: AbortController;
   private watchDisposers: (() => void)[] = [];
@@ -125,9 +127,16 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
     this.kubeObjectStores = listed;
 
     this.disposers.push(
-      this.namespaceStore.onContextChange(() => {
-        this.namespaceChanged();
-      }),
+      this.namespaceStore.onContextChange(
+        (namespaces) => {
+          const changed = this.namespaces !== undefined;
+          this.namespaces = namespaces;
+          if (changed) {
+            this.namespaceChanged();
+          }
+        },
+        { fireImmediately: true },
+      ),
       ...listed.map((store) =>
         reaction(
           () => store.items.toJSON(),
@@ -143,6 +152,7 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
     this.stopLoading();
     this.disposers.forEach((dispose) => dispose());
     this.disposers.length = 0;
+    this.namespaces = undefined;
     clearTimeout(this.settleTimer);
   }
 
@@ -228,26 +238,17 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
   }
 
   generateChartDataSeries = () => {
-    // The build runs in the callback of a reaction to the selection, which is
-    // never disposed: one more observer of the namespace store per build. Inside
-    // a reaction or an action, such as a store reaction, MobX runs the callback
-    // only when the outer one ends.
-    this.namespaceStore.onContextChange(
-      (namespaces) => {
-        const previous = { nodes: this.nodes, links: this.links };
-        const graph = buildNamespaceGraph(this.mapObjects(), namespaces, previous);
-        if (!previous.nodes.length || !sameGraph(graph, previous)) {
-          this.nodes = graph.nodes;
-          this.links = graph.links;
-          this.unsettle();
-          this.setState({
-            data: graph,
-            highlightLinks: new Set<LinkObject>(),
-          });
-        }
-      },
-      { fireImmediately: true },
-    );
+    const previous = { nodes: this.nodes, links: this.links };
+    const graph = buildNamespaceGraph(this.mapObjects(), this.namespaces ?? [], previous);
+    if (!previous.nodes.length || !sameGraph(graph, previous)) {
+      this.nodes = graph.nodes;
+      this.links = graph.links;
+      this.unsettle();
+      this.setState({
+        data: graph,
+        highlightLinks: new Set<LinkObject>(),
+      });
+    }
   };
 
   // The graph reached its first zoom and stopped: the points of its nodes, for

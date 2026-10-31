@@ -324,8 +324,11 @@ graph again, and a details map removes the nodes of deleted objects and adds
 the new ones; `toJSON()` reads every item and returns a new array, so the
 reaction sees the objects that the host replaces in place ("Rules That Fail
 Silently").
-The page and the panel load all nine stores, and load them again when the
-selection of the filter changes (`namespaceStore.onContextChange`). A details
+The page and the panel follow the selection of the filter with one reaction,
+`namespaceStore.onContextChange` with `fireImmediately`, registered when they
+mount and disposed when they unmount: it keeps the namespaces it is given,
+which every build of the graph reads, and loads the stores again when they
+change. A build starts no reaction of its own. A details
 map loads only the stores that have not loaded yet (`isLoaded`), reacts to the
 pods and to the store of its object's kind, and follows a new `object` from
 the host in `componentDidUpdate`.
@@ -521,8 +524,9 @@ mechanism; this is the list to check a change against.
   `fireImmediately` included, only when the outer one ends. A value that its
   callback sets is not there on the next line, and code that reads it there
   works on what it was before: `namespaceStore.onContextChange` called from a
-  store's reaction gives no selection until that reaction ends. Do the work in
-  the callback, or read the value outside such a reaction. The type check, the
+  store's reaction gives no selection until that reaction ends. Register the
+  reaction once, outside other reactions, and keep what it is given, as the
+  page and the panel keep the selection; or do the work in the callback. The type check, the
   build and a test that calls the code outside a reaction pass.
 - **An effect creates what its cleanup aborts or releases.** Freelens dev
   renders in `React.StrictMode`, which runs an effect, cleans it up and runs

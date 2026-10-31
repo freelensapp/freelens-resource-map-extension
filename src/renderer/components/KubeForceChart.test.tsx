@@ -2,7 +2,7 @@
 
 import { Common, Renderer } from "@freelensapp/extensions";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { compareShallow, observable, reaction, runInAction } from "mobx";
+import { compareShallow, getObserverTree, observable, reaction, runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pod, secret } from "../../../test/kube-objects";
@@ -168,6 +168,31 @@ describe("KubeForceChart", () => {
     });
 
     await waitFor(() => expect(drawnIds()).toEqual(["Pod/billing/ledger-1"]));
+  });
+
+  it("follows the selection with one reaction through rebuilds and changes, and with none after the unmount", async () => {
+    const observers = () => getObserverTree(selection).observers?.length ?? 0;
+    host.stores.pods.items.replace([pod("web-1", "shop"), pod("ledger-1", "billing")]);
+    const { unmount } = render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    act(() => {
+      runInAction(() => host.stores.pods.items.push(pod("web-2", "shop")));
+    });
+    act(() => {
+      selection.replace(["billing"]);
+    });
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/billing/ledger-1"]));
+    act(() => {
+      runInAction(() => host.stores.pods.items.push(pod("ledger-2", "billing")));
+    });
+
+    expect(drawnIds()).toEqual(["Pod/billing/ledger-1", "Pod/billing/ledger-2"]);
+    expect(observers()).toBe(1);
+
+    unmount();
+
+    expect(observers()).toBe(0);
   });
 
   it("shows the tooltip of the hovered node, and hides it when the pointer leaves", async () => {
