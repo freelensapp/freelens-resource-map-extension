@@ -1,10 +1,11 @@
 import { Renderer } from "@freelensapp/extensions";
-import { KubeResourceOverviewDetail, KubeResourcePage } from "./components";
-import { ErrorBoundary, withDetailsErrorBoundary, withPageErrorBoundary } from "./components/error-boundary";
+import { KubeResourcePage } from "./components";
+import { withDetailsErrorBoundary, withPageErrorBoundary } from "./components/error-boundary";
 import { KubeControllerChart } from "./components/KubeControllerChart";
 import { KubeIngressChart } from "./components/KubeIngressChart";
 import { KubePodChart } from "./components/KubePodChart";
 import { KubeServiceChart } from "./components/KubeServiceChart";
+import { WorkloadsOverviewItem } from "./components/workloads-overview-item";
 
 export default class KubeResourceMapRenderer extends Renderer.LensExtension {
   kubeObjectDetailItems: Renderer.LensExtension["kubeObjectDetailItems"] = [
@@ -54,16 +55,11 @@ export default class KubeResourceMapRenderer extends Renderer.LensExtension {
     },
   ];
 
-  // the host has no error boundary around a Workloads Overview item, and the template's wrappers do not cover it
   kubeWorkloadsOverviewItems: Renderer.LensExtension["kubeWorkloadsOverviewItems"] = [
     {
       priority: 25,
       components: {
-        Details: () => (
-          <ErrorBoundary extension={this}>
-            <KubeResourceOverviewDetail />
-          </ErrorBoundary>
-        ),
+        Details: () => <WorkloadsOverviewItem extension={this} />,
       },
     },
   ];
