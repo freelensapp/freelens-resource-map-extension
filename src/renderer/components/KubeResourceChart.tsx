@@ -156,6 +156,12 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
     this.stopLoading();
     const controller = new AbortController();
     this.loading = controller;
+    // With every store loaded, the loop below reaches every subscribe with no
+    // await, and React.StrictMode unmounts the first mount at once: the abort
+    // would come while the host's subscribe waits for the namespaces of the
+    // store, which it logs as an error. One turn first lets that mount stop.
+    await Promise.resolve();
+    if (controller.signal.aborted) return;
     for (const key of this.listable) {
       const store: MapStore = this.stores[key];
       if (!store.isLoaded) {
