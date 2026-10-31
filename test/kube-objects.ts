@@ -13,15 +13,28 @@ export interface Metadata {
   annotations?: Record<string, string>;
 }
 
+// The labels as the host's KubeObject.stringifyLabels gives them, "key=value".
+const stringify = (labels: Record<string, string> = {}) =>
+  Object.entries(labels).map(([key, value]) => `${key}=${value}`);
+
 /** An object of `kind`, with the members the maps read added to it. */
 export function kubeObject<T extends KubeObject>(kind: string, metadata: Metadata, members: object = {}): T {
-  return { kind, metadata, getName: () => metadata.name, getNs: () => metadata.namespace, ...members } as T;
+  return {
+    kind,
+    metadata,
+    getName: () => metadata.name,
+    getNs: () => metadata.namespace,
+    getLabels: () => stringify(metadata.labels),
+    ...members,
+  } as T;
 }
 
 export interface PodSpec {
   /** One of the values the host's `Pod.getStatusMessage()` returns, `Running` by default. */
   status?: string;
   labels?: Record<string, string>;
+  /** The kind and name of its owner, such as a StatefulSet. */
+  owner?: { kind: string; name: string };
   containers?: unknown[];
   volumes?: { name: string; secret?: { secretName?: string }; [source: string]: unknown }[];
 }
@@ -37,7 +50,17 @@ export function pod(name: string, namespace: string, spec: PodSpec = {}) {
       getContainers: () => spec.containers ?? [],
       getVolumes: () => volumes,
       getSecrets: () => volumes.flatMap((volume) => (volume.secret?.secretName ? [volume.secret.secretName] : [])),
+      getOwnerRefs: () => (spec.owner ? [{ ...spec.owner, namespace }] : []),
     },
+  );
+}
+
+/** A Deployment, whose selectors are its `matchLabels`, as the host's `getSelectors()` gives them. */
+export function deployment(name: string, namespace: string, matchLabels?: Record<string, string>) {
+  return kubeObject<Renderer.K8sApi.Deployment>(
+    "Deployment",
+    { name, namespace },
+    { spec: { selector: { matchLabels } }, getSelectors: () => stringify(matchLabels) },
   );
 }
 
