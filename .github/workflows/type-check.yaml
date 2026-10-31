@@ -1,4 +1,4 @@
-name: Test update
+name: Type check
 
 on:
   push:
@@ -13,18 +13,21 @@ permissions:
   contents: read
 
 jobs:
-  knip:
-    name: test update
+  type-check:
+    name: type check
 
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+
+    env:
+      DO_NOT_TRACK: "1"
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -34,15 +37,17 @@ jobs:
 
       - name: Get pnpm cache directory
         shell: bash
-        run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
+        run: |
+          pnpm_cache_dir="$(pnpm store path)"
+          echo "pnpm_cache_dir=${pnpm_cache_dir}" | tee -a "${GITHUB_ENV}"
 
       - name: Use pnpm cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.pnpm_cache_dir }}
-          key: ubuntu-22.04-x64-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ubuntu-24.04-arm-node-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ubuntu-22.04-x64-node-
+            ubuntu-24.04-arm-node-
 
       - name: Install pnpm dependencies
         id: install-pnpm
@@ -53,14 +58,7 @@ jobs:
         if: steps.install-pnpm.outcome == 'failure'
         run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
 
-      - name: Update pnpm dependencies
-        id: update-pnpm
-        run: timeout 300 pnpm update -D @freelensapp/extensions@latest --color=always
-        continue-on-error: true
-
-      - name: Update pnpm dependencies (retry)
-        if: steps.update-pnpm.outcome == 'failure'
-        run: timeout 300 pnpm update -D @freelensapp/extensions@latest --color=always
-
-      - name: Build packages
-        run: pnpm --color=always --stream build
+      # Sources per runtime environment, tests, tooling, then the environment
+      # tests; see "TypeScript" in AGENTS.md.
+      - name: Type check
+        run: pnpm --color=always type:check

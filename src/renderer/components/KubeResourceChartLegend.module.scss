@@ -1,7 +1,9 @@
+@use "../vars";
+
 .legend {
   display: flex;
   flex-direction: column;
-  padding: var(--padding);
+  padding: vars.$padding;
   background: var(--layoutBackground);
 }
 
@@ -14,7 +16,7 @@
 .resource {
   display: flex;
   align-items: center;
-  gap: var(--padding);
+  gap: vars.$padding;
   padding: 7px 0;
   border-right: 10px solid var(--color, transparent);
 }

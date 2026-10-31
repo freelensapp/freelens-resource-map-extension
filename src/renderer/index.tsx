@@ -47,6 +47,7 @@ export default class KubeResourceMapRenderer extends Renderer.LensExtension {
 
   clusterPageMenus = [
     {
+      id: "resource-map",
       target: { pageId: "resource-map" },
       title: "Resource Map",
       components: {

@@ -1,5 +1,7 @@
+@use "../vars";
+
 .kubeResourcePage {
-  padding: calc(var(--padding) * 2);
+  padding: vars.$padding * 2;
 
   main {
     overflow: hidden;
@@ -9,7 +11,7 @@
 .header {
   display: flex;
   align-items: center;
-  gap: var(--padding);
+  gap: vars.$padding;
   margin: 10px 0;
   padding: 0 10px 5px;
   border-bottom: 1px solid currentColor;
@@ -18,7 +20,7 @@
 .title {
   display: flex;
   align-items: center;
-  gap: var(--padding);
+  gap: vars.$padding;
 }
 
 .namespaceFilter {
@@ -28,14 +30,14 @@
 .overviewDetail {
   position: relative;
   width: 100%;
-  min-width: calc(var(--unit) * 75);
+  min-width: vars.$unit * 75;
   background: var(--contentColor);
 }
 
 .overviewHeader {
   display: flex;
   align-items: center;
-  padding: calc(var(--padding) * 2);
+  padding: vars.$padding * 2;
 
   h5 {
     flex-grow: 1;
@@ -44,5 +46,5 @@
 }
 
 .overviewContent {
-  margin: 0 calc(var(--unit) * 2) calc(var(--unit) * 2);
+  margin: 0 vars.$unit * 2 vars.$unit * 2;
 }

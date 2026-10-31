@@ -19,18 +19,18 @@ jobs:
   npm-version:
     name: npm version
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04-arm
     environment: automated
     timeout-minutes: 10
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.GH_TOKEN }}
 
       - name: Setup node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -43,12 +43,12 @@ jobs:
         run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
 
       - name: Use pnpm cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.pnpm_cache_dir }}
-          key: ubuntu-22.04-x64-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ubuntu-24.04-arm-node-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ubuntu-22.04-x64-node-
+            ubuntu-24.04-arm-node-
 
       - name: Install pnpm dependencies
         id: install-pnpm
@@ -63,7 +63,7 @@ jobs:
         run: |
           set -eo pipefail
           pnpm bump-version "$newversion" | tee .github/update.log
-          jq -r .version package.json > .github/version.log
+          yq -r .version package.json > .github/version.log
           sed -e 's/\x1b\[[0-9;]*m//g' .github/update.log > .github/pr_body.log
         env:
           newversion: ${{ github.event.inputs.newversion || 'prerelease' }}
@@ -87,7 +87,7 @@ jobs:
 
       - name: Commit and push to branch
         if: env.changes == 'true'
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v11
         with:
           github_token: ${{ secrets.GH_TOKEN }}
           default_author: github_actions
