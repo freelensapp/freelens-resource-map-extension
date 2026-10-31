@@ -124,6 +124,44 @@ describe("buildNamespaceGraph", () => {
     ]);
   });
 
+  it("takes an Ingress without rules, one whose rule has no http, and one with a resource backend", () => {
+    const ingress = (name: string, spec: object) =>
+      kubeObject<Renderer.K8sApi.Ingress>("Ingress", { name, namespace: "shop" }, { spec });
+    const input = objects({
+      ingresses: [
+        ingress("no-rules", { defaultBackend: { service: { name: "web", port: { number: 80 } } } }),
+        ingress("no-http", { rules: [{ host: "shop.example.com" }] }),
+        ingress("bucket", {
+          rules: [
+            {
+              http: {
+                paths: [
+                  {
+                    path: "/static",
+                    backend: { resource: { apiGroup: "k8s.example.com", kind: "Bucket", name: "assets" } },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        ingress("storefront", { rules: [{ http: { paths: [{ path: "/", backend: { service: { name: "web" } } }] } }] }),
+      ],
+      services: [service("web", "shop")],
+    });
+
+    const graph = buildNamespaceGraph(input, ["shop"]);
+
+    expect(nodeIds(graph)).toEqual([
+      "Ingress-bucket",
+      "Ingress-no-http",
+      "Ingress-no-rules",
+      "Ingress-storefront",
+      "Service-web",
+    ]);
+    expect(linkIds(graph)).toEqual(["Ingress-storefront -> Service-web"]);
+  });
+
   it("links a controller to its pods, and to the Helm release named by its labels or its annotations", () => {
     const web = kubeObject<Renderer.K8sApi.Deployment>("Deployment", {
       name: "web",
