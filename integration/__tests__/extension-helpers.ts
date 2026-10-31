@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium } from "playwright";
+import { expect } from "vitest";
 
 import type { Browser, ConsoleMessage, Frame, Locator, Page } from "playwright";
 
@@ -33,9 +34,9 @@ const mainLogFile = process.env.FREELENS_MAIN_LOG;
 // The kind cluster the sessions run against.
 export const kindClusterName = process.env.TEST_KIND_CLUSTER_NAME || "kind";
 
-// The namespace of the test objects. It must exist in the kind cluster: no
-// file of the repository creates it.
-const testNamespace = "integration-tests";
+// The namespaces of the test objects, which integration-tests.yaml applies
+// from integration/fixtures before Freelens starts: the same names in both.
+export const testNamespaces = ["shop", "billing"];
 
 // The package name with `@` dropped and `/` turned into `--`
 // (`sanitizeExtensionName` in Freelens's `lens-extension.ts`).
@@ -475,11 +476,11 @@ export async function disconnectKindCluster({ window }: AppSession) {
 }
 
 /**
- * Connects the kind cluster, selects the namespace of the test objects, and
- * returns the cluster's frame, where the extension's pages, details and menus
- * render.
+ * Connects the kind cluster and returns the cluster's frame, where the
+ * extension's page, the Workloads Overview and the details render. It opens
+ * no view of the extension, so that a session opens its own as the first one.
  */
-export async function openKindCluster({ window }: AppSession): Promise<Frame> {
+export async function connectKindCluster({ window }: AppSession): Promise<Frame> {
   const id = await kindClusterId(window);
 
   await navigate(window, `/cluster/${id}`);
@@ -492,7 +493,6 @@ export async function openKindCluster({ window }: AppSession): Promise<Frame> {
   }
 
   await frame.waitForSelector("[data-testid=cluster-sidebar]", viewTimeout);
-  await selectTestNamespace(frame);
 
   return frame;
 }
@@ -507,28 +507,114 @@ async function clickSidebarItem(frame: Frame, testId: string) {
   await frame.dispatchEvent(`[data-testid="${testId}"]`, "click");
 }
 
-/**
- * Selects the namespace of the test objects in the namespace filter of the
- * extension's page, the host's `NamespaceSelectFilter`. The selection holds for every namespaced list of the cluster, and
- * the app keeps it, so it is made only when the filter shows another one. The
- * session opens no page of the host, whose requests can log errors of their
- * own: the Pods page asks for pod metrics, and kind has no metrics server.
- */
-async function selectTestNamespace(frame: Frame) {
+/** Opens the Resource Map page from its sidebar entry. */
+export async function openResourceMap(frame: Frame) {
   await frame.waitForSelector(`[data-testid="${pageLinkTestId}"]`, viewTimeout);
   await clickSidebarItem(frame, pageLinkTestId);
+  await frame.locator("h2").getByText("Resource Map", { exact: true }).waitFor(viewTimeout);
+}
 
-  const label = frame.locator(".NamespaceSelect").getByText(`Namespace: ${testNamespace}`, { exact: true });
-  const namespaceSelect = await frame.waitForSelector(".NamespaceSelect", viewTimeout);
+/**
+ * Opens Workloads > Overview, at its route in the cluster frame: the group of
+ * the sidebar may be collapsed, and its entry is then not on the page.
+ */
+export async function openWorkloadsOverview(frame: Frame) {
+  await frame.evaluate(() => globalThis.FreelensExtensionApi.Renderer?.Navigation.navigate("/workloads"));
+  await frame.locator("h5").getByText("Resources", { exact: true }).waitFor(viewTimeout);
+}
 
-  if (await label.count()) {
+/** The namespaces of the cluster context, which the filter shows. */
+async function selectedNamespaces(frame: Frame): Promise<string[]> {
+  return frame.evaluate(() =>
+    [...(globalThis.FreelensExtensionApi.Renderer?.K8sApi.namespaceStore.contextNamespaces ?? [])].sort(),
+  );
+}
+
+/**
+ * Selects the namespaces in the namespace filter of the open view, the host's
+ * `NamespaceSelectFilter`, unless it shows them already. The first one is
+ * chosen alone; the others are added with the key of a multiple selection,
+ * Meta on macOS and Control elsewhere, held while the option is chosen. The
+ * app keeps the selection for every view of the cluster.
+ */
+export async function selectNamespaces(frame: Frame, namespaces: readonly string[]) {
+  const wanted = [...namespaces].sort();
+
+  if ((await selectedNamespaces(frame)).join() === wanted.join()) {
     return;
   }
 
-  console.log(`select namespace ${testNamespace}`);
-  await namespaceSelect.click();
-  await namespaceSelect.type(testNamespace);
-  await namespaceSelect.press("Enter");
-  await namespaceSelect.click();
-  await label.waitFor(viewTimeout);
+  console.log(`select namespaces ${namespaces.join(", ")}`);
+  const filter = frame.locator('[data-testid="namespace-select-filter"]');
+  const input = filter.locator("input");
+  const multipleSelectionKey = process.platform === "darwin" ? "Meta" : "Control";
+  const { keyboard } = frame.page();
+
+  await filter.click();
+
+  for (const [index, namespace] of namespaces.entries()) {
+    await input.pressSequentially(namespace);
+
+    if (index === 0) {
+      await input.press("Enter");
+    } else {
+      await keyboard.down(multipleSelectionKey);
+      await input.press("Enter");
+      await keyboard.up(multipleSelectionKey);
+    }
+  }
+
+  await expect.poll(() => selectedNamespaces(frame), viewTimeout).toEqual(wanted);
+  await input.press("Escape");
+}
+
+/** The map of the open view: the container of the graph, with its hidden list of the nodes. */
+export function mapOf(frame: Frame): Locator {
+  return frame.locator(':has(> [data-testid="resource-map-nodes"])');
+}
+
+/** A node of the map, at its point on the canvas when the graph settled. */
+export interface MapNode {
+  kind: string;
+  namespace: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * Waits until the graph of the map has settled, and returns its nodes from
+ * the hidden list that the map fills then. A node stays at its point until the
+ * graph gets new data.
+ */
+export async function settledNodes(frame: Frame): Promise<MapNode[]> {
+  const map = mapOf(frame);
+  await frame.locator('[data-settled]:has(> [data-testid="resource-map-nodes"])').waitFor(viewTimeout);
+
+  return map.locator('[data-testid="resource-map-nodes"] li').evaluateAll((items) =>
+    items.map((item) => {
+      const { kind = "", namespace = "", name = "", x = "0", y = "0" } = (item as HTMLElement).dataset;
+      return { kind, namespace, name, x: Number(x), y: Number(y) };
+    }),
+  );
+}
+
+/** The node of an object, as `<kind> <namespace>/<name>`. */
+export function nodeKey({ kind, namespace, name }: Pick<MapNode, "kind" | "namespace" | "name">) {
+  return `${kind} ${namespace}/${name}`;
+}
+
+/**
+ * The point of a node on the screen: its point on the canvas plus the position
+ * of the canvas, which Playwright gives in the coordinates of the page, also
+ * for an element of the cluster frame.
+ */
+export async function nodePoint(frame: Frame, node: MapNode): Promise<{ x: number; y: number }> {
+  const box = await mapOf(frame).locator("canvas").boundingBox();
+
+  if (!box) {
+    throw new Error("The map has no visible canvas");
+  }
+
+  return { x: box.x + node.x, y: box.y + node.y };
 }

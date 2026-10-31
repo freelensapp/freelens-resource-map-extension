@@ -1,0 +1,11 @@
+# The two namespaces of the test objects: the same names in both, so that a
+# session sees two nodes for two objects of the same kind and name.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: billing

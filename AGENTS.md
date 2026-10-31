@@ -893,7 +893,8 @@ the exception: their sequences stay unindented, as kubectl writes them, which
 Biome cannot do. `biome.jsonc` leaves out the directories meant for them,
 `integration/fixtures/` and `examples/`, and the ignore rules of
 `.trunk/trunk.yaml` give them to yamlfmt only, which formats them with the
-`.yamlfmt.yaml` of their directory; the repository has no manifest.
+`.yamlfmt.yaml` of their directory: the test objects of the integration tests
+and the local chart in `integration/fixtures/`.
 `biome.jsonc` also leaves out `pnpm-lock.yaml` and `pnpm-workspace.yaml`,
 which pnpm writes, and `.trunk/`, whose `trunk.yaml` `trunk upgrade` rewrites.
 
@@ -988,7 +989,9 @@ it with Playwright's `chromium.connectOverCDP` on the port that script opens
 Freelens and no file of its checkout; Freelens dev is the only dependency, and
 it is not in `package.json`. `playwright` is a devDependency at the version of
 Freelens's catalog. The workflow builds the extension, checks out Freelens at
-each release tag of its matrix (`v2.0.0`), starts a kind cluster, starts
+each release tag of its matrix (`v2.0.0`), starts a kind cluster, applies the
+test objects of `integration/fixtures/resource-map` and installs the local
+chart `integration/fixtures/charts/catalog` with `helm`, starts
 `pnpm dev` in the Freelens checkout in the background under `xvfb-run`, with
 its output in a file and a fresh profile in `FREELENS_INTEGRATION_TESTING_DIR`,
 waits until the CDP endpoint answers, and runs `pnpm test:integration` here. A
@@ -1002,6 +1005,26 @@ process:
   app has, installs this checkout in place from the Extensions page and waits
   until the table lists it as enabled. It needs no cluster. The extension has
   no `appPreferences`, so the session opens no preferences page.
+- `resource-map-page.tests.ts` opens the Resource Map page as the first view of
+  the extension after the kind cluster connects, and selects the two test
+  namespaces. It checks the nodes of the test objects, the two Deployments
+  named `web` as two nodes and the four Ingresses included, one canvas, that
+  the map follows a change of the selection, the tooltip of a node under a real
+  pointer, and that a click on the node of the Helm release opens it at
+  `/helm/releases/shop/catalog`.
+- `workloads-overview.tests.ts` opens Workloads > Overview as the first view
+  after the kind cluster connects. The overview loads pods and workloads, but
+  no Services or Ingresses: the session checks that the "Resources" panel draws
+  them, that its map is 480 px high and as wide as the panel, and one canvas.
+
+One canvas in the container of a map shows that the guard of react-kapsule
+against the double mount of `React.StrictMode`, which Freelens dev renders in,
+holds. The test objects are the same Deployment, Service and ConfigMap in the
+namespaces `shop` and `billing`, an Ingress with a TLS secret and a service
+backend, one without rules, one whose rule has no `http` and one with a
+`resource` backend, and the release `catalog` of the local chart, whose
+objects Helm marks with its label and annotation. The pods run a pause
+container: the map reads specs, and needs no ingress controller.
 
 The tests are deterministic, so nothing retries them: the config sets no
 `retry`, and the workflow runs the step once, under `timeout 600`. A retry
@@ -1037,21 +1060,29 @@ The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
 turbo otherwise groups the output of a task until it ends, and the persistent
 `dev` task never ends, so the log would stay empty.
 
-The helpers also open the kind cluster for a session that needs it: they
-connect it, wait for its sidebar, open the Resource Map page from its sidebar
-entry, by the test id that the `clusterPageMenus` id `resource-map` gives it,
-and select the test namespace, `integration-tests`, in the page's namespace
-filter, unless the filter already shows it. The namespace must exist in the
-kind cluster, and no file of the repository creates it. The filter is the
-host's, and the app keeps its selection for every namespaced list of the
-cluster. A session opens no page of the host, whose requests can log errors of
-their own: the Pods page asks for pod metrics, and kind has no metrics server.
-The sessions change nothing in the cluster.
+The helpers connect the kind cluster without opening a view
+(`connectKindCluster`), so that a session opens its own as the first one after
+`disconnectKindCluster`. They open the Resource Map page from its sidebar
+entry, by the test id that the `clusterPageMenus` id `resource-map` gives it
+(`openResourceMap`), and Workloads > Overview at its route `/workloads`
+(`openWorkloadsOverview`), since its group of the sidebar may be collapsed.
+`selectNamespaces` selects the test namespaces, `shop` and `billing`, in the
+namespace filter of the open view, unless it shows them already: the first
+one alone, and the others with the key of a multiple selection held, Meta on
+macOS and Control elsewhere. The filter is the host's, and the app keeps its
+selection for every view of the cluster. `settledNodes` waits for the
+`data-settled` mark of the map and reads its hidden list of the nodes, and
+`nodePoint` gives the point of a node on the screen: its point on the canvas
+plus the position of the canvas, which Playwright gives in the coordinates of
+the page for an element of the cluster frame too. A session opens no page of
+the host whose requests log errors of their own: the Pods page asks for pod
+metrics, and kind has no metrics server. The sessions change nothing in the
+cluster.
 
 The code the sessions share is in `integration/__tests__/extension-helpers.ts`:
 connecting to the app with the error collector, installing the extension,
-connecting and disconnecting the kind cluster, opening the Resource Map page
-with the test namespace selected, and the selectors. Its name does not match
+connecting and disconnecting the kind cluster, opening the views, selecting
+the namespaces, reading the nodes of a map, and the selectors. Its name does not match
 `*.tests.ts`, so Vitest does not collect it. `integration/tsconfig.json`
 compiles the directory with Node and the DOM, because the callbacks of
 `page.evaluate` run in the page, and with the types of

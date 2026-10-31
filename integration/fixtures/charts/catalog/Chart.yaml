@@ -1,0 +1,6 @@
+# A chart for the Helm release of the sessions. Helm sets on what it installs
+# the app.kubernetes.io/managed-by label and the meta.helm.sh/release-name
+# annotation, from which the map draws the node of the release.
+apiVersion: v2
+name: catalog
+version: 0.1.0
