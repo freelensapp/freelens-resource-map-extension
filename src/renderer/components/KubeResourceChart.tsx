@@ -5,7 +5,6 @@ import { observer } from "mobx-react";
 import React from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { config } from "./helpers/config";
-import type { ChartDataSeries, LinkObject } from "./helpers/types";
 import styles from "./KubeForceChart.module.scss";
 import {
   DefaultTooltip,
@@ -15,6 +14,8 @@ import {
   ServiceTooltip,
   StatefulsetTooltip,
 } from "./tooltips";
+
+import type { ChartDataSeries, LinkObject } from "./helpers/types";
 
 type KubeObject = Renderer.K8sApi.KubeObject;
 

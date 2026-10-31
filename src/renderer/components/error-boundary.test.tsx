@@ -52,7 +52,10 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("before")).toBeDefined();
     expect(screen.getByText("after")).toBeDefined();
     expect(Common.logger.error).toHaveBeenCalledTimes(1);
-    expect(Common.logger.error).toHaveBeenCalledWith("[@freelensapp/resource-map-extension]: Error: boom", expect.any(String));
+    expect(Common.logger.error).toHaveBeenCalledWith(
+      "[@freelensapp/resource-map-extension]: Error: boom",
+      expect.any(String),
+    );
   });
 
   it("renders nothing in place of a child that throws with the fallback nothing, and logs it", () => {
@@ -68,7 +71,10 @@ describe("ErrorBoundary", () => {
     );
 
     expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Edit", "Delete"]);
-    expect(Common.logger.error).toHaveBeenCalledWith("[@freelensapp/resource-map-extension]: Error: menu item", expect.any(String));
+    expect(Common.logger.error).toHaveBeenCalledWith(
+      "[@freelensapp/resource-map-extension]: Error: menu item",
+      expect.any(String),
+    );
   });
 
   it("renders its children without an error", () => {
@@ -166,6 +172,9 @@ describe("the registration wrappers", () => {
 
     expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Edit", "Delete"]);
     expect(screen.queryByText(/menu item/)).toBeNull();
-    expect(Common.logger.error).toHaveBeenCalledWith("[@freelensapp/resource-map-extension]: Error: menu item", expect.any(String));
+    expect(Common.logger.error).toHaveBeenCalledWith(
+      "[@freelensapp/resource-map-extension]: Error: menu item",
+      expect.any(String),
+    );
   });
 });

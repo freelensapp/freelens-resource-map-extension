@@ -37,7 +37,6 @@ export const kindClusterName = process.env.TEST_KIND_CLUSTER_NAME || "kind";
 // file of the repository creates it.
 const testNamespace = "integration-tests";
 
-
 // The package name with `@` dropped and `/` turned into `--`
 // (`sanitizeExtensionName` in Freelens's `lens-extension.ts`).
 const sanitizedExtensionId = extensionName.replace("@", "").replace("/", "--");
@@ -46,8 +45,6 @@ const sanitizedExtensionId = extensionName.replace("@", "").replace("/", "--");
 // `clusterPageMenus` id, after the sanitized package name. Only the link
 // navigates.
 const pageLinkTestId = `link-for-sidebar-item-${sanitizedExtensionId}-resource-map`;
-
-
 
 const viewTimeout = { timeout: 60 * 1000 };
 

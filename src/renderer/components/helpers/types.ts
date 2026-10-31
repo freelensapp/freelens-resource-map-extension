@@ -1,4 +1,5 @@
 import type { Renderer } from "@freelensapp/extensions";
+
 import type { LinkObject as GraphLinkObject, NodeObject as GraphNodeObject } from "react-force-graph-2d";
 
 /** The data of a node of the map: the object it stands for and how it is drawn. */

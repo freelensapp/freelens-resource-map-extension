@@ -1,6 +1,7 @@
-import type { Renderer } from "@freelensapp/extensions";
 import { ErrorBoundary } from "./error-boundary";
 import { KubeResourceOverviewDetail } from "./KubeResourcePage";
+
+import type { Renderer } from "@freelensapp/extensions";
 
 export interface WorkloadsOverviewItemProps {
   extension: Renderer.LensExtension;

@@ -5,9 +5,10 @@ import { observer } from "mobx-react";
 import React from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { config } from "./helpers/config";
-import type { ChartDataSeries, LinkObject } from "./helpers/types";
 import styles from "./KubeForceChart.module.scss";
 import { DefaultTooltip, DeploymentTooltip, PodTooltip, ServiceTooltip, StatefulsetTooltip } from "./tooltips";
+
+import type { ChartDataSeries, LinkObject } from "./helpers/types";
 
 export interface KubeForceChartProps {
   id?: string; // html-id to bind chart

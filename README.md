@@ -1,6 +1,4 @@
-
 # @freelensapp/resource-map-extension
-
 
 [![Home](https://img.shields.io/badge/%F0%9F%8F%A0-freelens.app-02a7a0)](https://freelens.app)
 [![GitHub](https://img.shields.io/github/stars/freelensapp/freelens?style=flat&label=GitHub%20%E2%AD%90)](https://github.com/freelensapp/freelens)
@@ -9,7 +7,8 @@
 
 
 ## Overview 
-The following is a description from the original repo : 
+
+The following is a description from the original repo :
 
 "Lens Resource Map is an extension for [Lens - The Kubernetes IDE](https://k8slens.dev) that displays Kubernetes resources and their relations as a real-time force-directed graph."
 
@@ -23,7 +22,7 @@ The following is a description from the original repo :
 - Namespace filtering
 - Visual indicators for resource status and health
 - Click navigation to resource details
-- Access the resource map from its own dedicated tab or directly within the cluster's workload overview  
+- Access the resource map from its own dedicated tab or directly within the cluster's workload overview
 - See a focused mini-map of related resources when viewing details of a specific resource
 
 ## Requirements
@@ -136,10 +135,10 @@ pnpm build
 
 
 ## License
+
 This project is licensed under the MIT License.  
 Original work © [Lauri Nevala](https://github.com/nevalla) [ [kube-resource-map](https://github.com/nevalla/lens-resource-map-extension) ]
 
 Freelens adaptation and initial update © 2025-2026 [Yasmine Gharbi](https://github.com/GHARBIyasmine)
 
 Maintained collaboratively under the [Freelens](https://github.com/freelensapp) organization.
-
