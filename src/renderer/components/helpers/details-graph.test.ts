@@ -90,8 +90,7 @@ describe("the builders of the details maps", () => {
     }
   });
 
-  it("draw two objects of the same kind and name from two namespaces as two nodes", () => {
-    // The Deployment of a pod is the first in the store whose selectors the pod carries, in any namespace.
+  it("take no Deployment of another namespace for one of the same name", () => {
     const billingWeb = deployment("web", "billing", { app: "web" });
     const shopWeb = deployment("web", "shop", { app: "api" });
     const front = service("front", "shop", { tier: "front" });
@@ -105,10 +104,25 @@ describe("the builders of the details maps", () => {
     });
 
     expect(linkIds(buildServiceMap(front, input))).toEqual([
-      "Deployment/billing/web -> Pod/shop/web-1",
       "Deployment/shop/web -> Pod/shop/api-1",
       "Pod/shop/api-1 -> Service/shop/front",
       "Pod/shop/web-1 -> Service/shop/front",
     ]);
+  });
+
+  it("take as the Deployment of a pod one of its namespace, and no Deployment without matchLabels", () => {
+    const web1 = pod("web-1", "shop", { labels: { app: "web" } });
+    const api1 = pod("api-1", "shop", { labels: { app: "api" } });
+    const input = objects({
+      pods: [web1, api1],
+      deployments: [
+        deployment("web", "billing", { app: "web" }),
+        deployment("everything", "shop"),
+        deployment("web", "shop", { app: "web" }),
+      ],
+    });
+
+    expect(linkIds(buildPodMap(web1, input))).toEqual(["Deployment/shop/web -> Pod/shop/web-1"]);
+    expect(linkIds(buildPodMap(api1, input))).toEqual([]);
   });
 });

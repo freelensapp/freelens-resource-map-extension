@@ -253,11 +253,11 @@ px high and as wide as the panel, below its "Resources" title.
 
 The nodes are the pods, deployments, stateful sets, daemon sets, services,
 ingresses, persistent volume claims, config maps and secrets, and the Helm
-releases they belong to. The links are the relations that the objects declare:
-a workload to its pods, a service to the pods its selector matches, an ingress
-to its backend services and its TLS secrets, a pod to the config maps, secrets
-and claims that its containers' `envFrom` and `env` `secretKeyRef`s name and
-its `configMap`, `secret` and `persistentVolumeClaim` volumes mount, and a Helm
+releases they belong to. The links are the relations that the objects declare: a
+workload to its pods, a service to the pods its selector matches, an ingress to
+its backend services and its TLS secrets, a pod to the config maps, secrets and
+claims that its containers' `envFrom` and `env` `secretKeyRef`s name and its
+`configMap`, `secret` and `persistentVolumeClaim` volumes mount, and a Helm
 release, known from the labels and annotations that Helm sets and from its
 release secrets, to its workloads and those secrets. A `configMapKeyRef`, a
 projected volume or an init container gives no link, and in the Service and
@@ -265,20 +265,18 @@ Ingress maps a pod links to no config map, secret or claim. The page and the
 panel draw the objects of the namespaces that the filter selects, a config map
 only when a pod links to it, a TLS secret only when a link reaches it, and a
 service account token secret only when a link other than a `secret` volume
-reaches it. A details map draws the objects related to its object that
-the stores hold in the object's namespace; the stores hold the namespaces of
-the filter. The exception is the Deployment of a pod in the Pod, Service and
-Ingress maps: for a pod that no StatefulSet or DaemonSet owns, it is the first
-Deployment in the store, in any namespace, whose `matchLabels` the pod carries.
-A Deployment's `matchExpressions` are not read, so one that selects with them
-alone matches every such pod. In the workload and Pod maps, only the first
+reaches it. A details map draws the objects related to its object that the
+stores hold in the object's namespace; the stores hold the namespaces of the
+filter. For a pod that no StatefulSet or DaemonSet owns, the Pod, Service and
+Ingress maps take as its Deployment the first one of its namespace all of whose
+`matchLabels` the pod carries; `matchExpressions` are not read, and a Deployment
+without `matchLabels` takes no pod. In the workload and Pod maps, only the first
 Ingress of the namespace whose backend names a Service on the map gets a node,
 with its TLS secrets, and the links of every later such Ingress start from that
-node. A graph shows a spinner until its stores have
-loaded, and the page and the panel show "No visualizable resources found in
-this namespace." when the stores, config maps aside, loaded no object; the
-message stays until the selection of the filter changes, because the reactions
-do not clear it.
+node. A graph shows a spinner until its stores have loaded, and the page and the
+panel show "No visualizable resources found in this namespace." when the stores,
+config maps aside, loaded no object; the message stays until the selection of
+the filter changes, because the reactions do not clear it.
 
 On the page and the panel, `buildNamespaceGraph` of `helpers/namespace-graph.ts`
 builds the nodes and the links from the stores' items, the selected namespaces

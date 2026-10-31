@@ -217,7 +217,8 @@ class DetailsGraphBuilder {
     }
   }
 
-  // The StatefulSet or DaemonSet that owns the pod, or else the first Deployment whose selectors the pod carries.
+  // The StatefulSet or DaemonSet that owns the pod, or else the first Deployment of its namespace that has selectors,
+  // all of which the pod carries.
   private controllerOf(pod: Pod): Controller | undefined {
     const [owner] = pod.getOwnerRefs();
     if (owner?.kind == "StatefulSet") {
@@ -226,9 +227,14 @@ class DetailsGraphBuilder {
     if (owner?.kind == "DaemonSet") {
       return byName(this.objects.daemonSets, owner.name, pod.getNs());
     }
-    return this.objects.deployments.find((deployment) =>
-      deployment.getSelectors().every((label) => pod.getLabels().includes(label)),
-    );
+    return this.objects.deployments.find((deployment) => {
+      const selectors = deployment.getSelectors();
+      return (
+        deployment.getNs() === pod.getNs() &&
+        selectors.length > 0 &&
+        selectors.every((label) => pod.getLabels().includes(label))
+      );
+    });
   }
 
   private addIngress(ingress: Ingress) {
