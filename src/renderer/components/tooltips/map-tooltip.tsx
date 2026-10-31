@@ -44,7 +44,9 @@ export interface MapTooltipProps {
  * The tooltip of the hovered node, in the map's own React tree, where the
  * host's components keep their context. The map renders it inside its
  * container, which is positioned, and hands the container's mouse moves to
- * `follow`, which places it next to the pointer without a render.
+ * `follow`, which places it next to the pointer without a render, on the side
+ * where it fits in the container: a tooltip past the edge would make the
+ * content of a details drawer overflow, and its scrollbar would narrow the map.
  */
 export class MapTooltip extends React.Component<MapTooltipProps> {
   private readonly element = React.createRef<HTMLDivElement>();
@@ -52,9 +54,17 @@ export class MapTooltip extends React.Component<MapTooltipProps> {
   follow = (event: React.MouseEvent<HTMLElement>) => {
     const tooltip = this.element.current;
     if (!tooltip) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    tooltip.style.left = `${event.clientX - bounds.left + 12}px`;
-    tooltip.style.top = `${event.clientY - bounds.top + 12}px`;
+    const container = event.currentTarget;
+    const bounds = container.getBoundingClientRect();
+    const x = event.clientX - bounds.left;
+    const y = event.clientY - bounds.top;
+    const offset = 12;
+    const left =
+      x + offset + tooltip.offsetWidth > container.clientWidth ? x - offset - tooltip.offsetWidth : x + offset;
+    const top =
+      y + offset + tooltip.offsetHeight > container.clientHeight ? y - offset - tooltip.offsetHeight : y + offset;
+    tooltip.style.left = `${Math.max(0, left)}px`;
+    tooltip.style.top = `${Math.max(0, top)}px`;
   };
 
   render() {

@@ -87,7 +87,8 @@ describe("MapTooltip", () => {
     expect(tooltip.textContent).toBe("");
   });
 
-  it("follows the pointer over the container of the map", () => {
+  // jsdom lays nothing out: the sizes of the container and the tooltip are set by hand.
+  const renderInMap = () => {
     const tooltipRef = React.createRef<MapTooltip>();
     const object = new Renderer.K8sApi.Pod({ apiVersion: "v1", kind: "Pod", metadata: metadata("web-1") });
     render(
@@ -96,6 +97,14 @@ describe("MapTooltip", () => {
       </div>,
     );
     const map = screen.getByTestId("map");
+    const tooltip = screen.getByTestId("resource-map-tooltip");
+    Object.defineProperties(map, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
+    Object.defineProperties(tooltip, { offsetWidth: { value: 300 }, offsetHeight: { value: 120 } });
+    return { map, tooltip };
+  };
+
+  it("follows the pointer over the container of the map", () => {
+    const { map } = renderInMap();
     vi.spyOn(map, "getBoundingClientRect").mockReturnValue({
       x: 40,
       y: 30,
@@ -113,5 +122,30 @@ describe("MapTooltip", () => {
     const tooltip = screen.getByTestId("resource-map-tooltip");
     expect(tooltip.style.left).toBe("112px");
     expect(tooltip.style.top).toBe("62px");
+  });
+
+  it("stays inside the container, on the side of the pointer where it fits", () => {
+    const { map, tooltip } = renderInMap();
+    vi.spyOn(map, "getBoundingClientRect").mockReturnValue({
+      x: 40,
+      y: 30,
+      left: 40,
+      top: 30,
+      right: 840,
+      bottom: 630,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.mouseMove(map, { clientX: 740, clientY: 530 });
+
+    expect(tooltip.style.left).toBe("388px");
+    expect(tooltip.style.top).toBe("368px");
+
+    fireEvent.mouseMove(map, { clientX: 50, clientY: 40 });
+
+    expect(tooltip.style.left).toBe("22px");
+    expect(tooltip.style.top).toBe("22px");
   });
 });

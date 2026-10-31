@@ -358,18 +358,20 @@ node in its own React tree, in a `div` next to the pointer, which the mouse
 moves over the graph's container place without a render. That `div` is
 `MapTooltip` of `tooltips/map-tooltip.tsx`, with the test id
 `resource-map-tooltip` and `pointer-events: none`: the container hands its mouse
-moves to `follow`, and `NodeTooltip` picks the tooltip of the kind. The tooltips
-take the theme's colors: `--textColorSecondary` for their text,
-`--drawerItemNameColor` and `--drawerItemValueColor` for the names and values of
-a `DrawerItem`, and `--tooltipBackground`, `--borderColor` and
-`--textColorPrimary` for the box of `MapTooltip`. force-graph shows its tooltip
-with float-tooltip, which sets a label that is a string as HTML, appends one
-that is an element, and renders a JSX element with its own copy of Preact,
-bundled with it. The host's components run on the host's React, which Preact
-does not provide, and an HTML string of them needs `react-dom/server`, which the
-host does not publish ("Modules provided by the host"). Rendered in the graph's
-own tree, the tooltip is part of the graph's render, on the host's React.
-`nodeLabel` returns an empty string, so force-graph shows no tooltip of its own.
+moves to `follow`, which keeps it in the container, on the side of the pointer
+where it fits, so that it never makes the content of a details drawer overflow,
+and `NodeTooltip` picks the tooltip of the kind. The tooltips take the theme's
+colors: `--textColorSecondary` for their text, `--drawerItemNameColor` and
+`--drawerItemValueColor` for the names and values of a `DrawerItem`, and
+`--tooltipBackground`, `--borderColor` and `--textColorPrimary` for the box of
+`MapTooltip`. force-graph shows its tooltip with float-tooltip, which sets a
+label that is a string as HTML, appends one that is an element, and renders a
+JSX element with its own copy of Preact, bundled with it. The host's components
+run on the host's React, which Preact does not provide, and an HTML string of
+them needs `react-dom/server`, which the host does not publish ("Modules
+provided by the host"). Rendered in the graph's own tree, the tooltip is part of
+the graph's render, on the host's React. `nodeLabel` returns an empty string, so
+force-graph shows no tooltip of its own.
 
 The icon of every kind is an SVG file in `src/renderer/assets/icons/`, imported
 with `?url` in `helpers/config.ts`. Library mode inlines every asset it
