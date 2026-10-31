@@ -1,7 +1,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import { KubeResourceChart } from "./KubeResourceChart";
 
-export class KubeIngressChart extends KubeResourceChart {
+export class KubeIngressChart extends KubeResourceChart<Renderer.K8sApi.Ingress> {
   registerStores() {
     this.kubeObjectStores = [
       this.podsStore,
@@ -21,7 +21,7 @@ export class KubeIngressChart extends KubeResourceChart {
     const links = [...this.links];
 
     const { object: ingress } = this.props;
-    this.generateIngress(ingress as Renderer.K8sApi.Ingress);
+    this.generateIngress(ingress);
 
     if (nodes.length != this.nodes.length || links.length != this.links.length) {
       this.updateState(this.nodes, this.links);

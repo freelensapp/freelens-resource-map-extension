@@ -1,6 +1,10 @@
 import { KubeResourceChart } from "./KubeResourceChart";
 
-export class KubeControllerChart extends KubeResourceChart {
+import type { Renderer } from "@freelensapp/extensions";
+
+export class KubeControllerChart extends KubeResourceChart<
+  Renderer.K8sApi.Deployment | Renderer.K8sApi.DaemonSet | Renderer.K8sApi.StatefulSet
+> {
   registerStores() {
     this.kubeObjectStores = [
       this.podsStore,

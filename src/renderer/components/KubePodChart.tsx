@@ -1,7 +1,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import { KubeResourceChart } from "./KubeResourceChart";
 
-export class KubePodChart extends KubeResourceChart {
+export class KubePodChart extends KubeResourceChart<Renderer.K8sApi.Pod> {
   registerStores() {
     this.kubeObjectStores = [
       this.podsStore,
@@ -31,13 +31,13 @@ export class KubePodChart extends KubeResourceChart {
   protected generatePodNode() {
     const { object: pod } = this.props;
 
-    this.getPodNode(pod as Renderer.K8sApi.Pod);
-    this.generateServices([pod as Renderer.K8sApi.Pod]);
+    this.getPodNode(pod);
+    this.generateServices([pod]);
 
-    const controller = this.getControllerObject(pod as Renderer.K8sApi.Pod);
+    const controller = this.getControllerObject(pod);
 
     if (controller) {
-      this.getControllerChartNode(controller, [pod as Renderer.K8sApi.Pod]);
+      this.getControllerChartNode(controller, [pod]);
     }
   }
 

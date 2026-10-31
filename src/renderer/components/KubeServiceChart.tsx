@@ -1,7 +1,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import { KubeResourceChart } from "./KubeResourceChart";
 
-export class KubeServiceChart extends KubeResourceChart {
+export class KubeServiceChart extends KubeResourceChart<Renderer.K8sApi.Service> {
   registerStores() {
     this.kubeObjectStores = [
       this.podsStore,
@@ -21,7 +21,7 @@ export class KubeServiceChart extends KubeResourceChart {
     const links = [...this.links];
 
     const { object: service } = this.props;
-    const selector = (service as Renderer.K8sApi.Service).spec.selector;
+    const selector = service.spec.selector;
 
     this.generateNode(service);
 

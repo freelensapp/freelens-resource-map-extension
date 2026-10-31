@@ -30,7 +30,7 @@ export default class KubeResourceMapRenderer extends Renderer.LensExtension {
       Details: (props) => <KubeServiceChart {...props} />,
     }),
     Renderer.K8sApi.detailsFor(Renderer.K8sApi.Ingress, {
-      apiVersions: ["networking.k8s.io/v1"],
+      apiVersions: ["networking.k8s.io/v1", "extensions/v1beta1"],
       priority: 10,
       Details: (props) => <KubeIngressChart {...props} />,
     }),

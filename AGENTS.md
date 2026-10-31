@@ -448,14 +448,16 @@ Freelens 2.0.0 answers.
   `Renderer.K8sApi.detailsFor(Renderer.K8sApi.Pod, { priority: 10, Details: (props) => <KubePodChart {...props} /> })`
   and the like, not written out with `kind` and `apiVersions`. The helper takes `kind` from the host's class and
   `apiVersions` from the group and version of its `apiBase`, unless the registration names them, as the one of
-  `Ingress` does with `networking.k8s.io/v1`, the version of the class. It types the props of `Details` from the class,
+  `Ingress` does with `networking.k8s.io/v1` and `extensions/v1beta1`, as the host's own details of an Ingress. It
+  types the props of `Details` from the class,
   so a wrapper that passes them on needs no props annotation, and a component written for another kind fails the type
   check.
 - The host passes a details panel `Renderer.Component.KubeObjectDetailsProps<K>`, with `K` the class of the
-  registration: `object` and an optional `className`. The details maps share `KubeResourceChartProps`, whose `object`
-  is the base `Renderer.K8sApi.KubeObject`, because one class hierarchy serves all six kinds. The check of `detailsFor`
-  is structural, and such a component fits every class, so only the registrations in `src/renderer/index.tsx` keep each
-  subclass to the kinds it handles.
+  registration: `object` and an optional `className`. `KubeResourceChart` takes the class of its object as a type
+  parameter, in `KubeResourceChartProps<K>`, and each subclass names the class it draws: `KubePodChart` a `Pod`,
+  `KubeServiceChart` a `Service`, `KubeIngressChart` an `Ingress`, and `KubeControllerChart` a `Deployment`,
+  `DaemonSet` or `StatefulSet`. So a subclass registered for another kind fails the type check, and the subclasses
+  read their object with no cast.
 - The host renders a cluster page with `params` only, and a Workloads Overview item with no props. A component that
   needs the extension gets it from the registration, as `WorkloadsOverviewItem` does
   (`Details: () => <WorkloadsOverviewItem extension={this} />`), with the component created once, outside the

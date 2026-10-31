@@ -19,9 +19,10 @@ import type { ChartDataSeries, LinkObject } from "./helpers/types";
 
 type KubeObject = Renderer.K8sApi.KubeObject;
 
-export interface KubeResourceChartProps {
+export interface KubeResourceChartProps<K extends KubeObject = KubeObject> {
   id?: string; // html-id to bind chart
-  object: Renderer.K8sApi.KubeObject;
+  /** The object of the details panel, of the class that the registration names. */
+  object: K;
 }
 
 interface State {
@@ -43,7 +44,10 @@ interface MapStore {
 const logPrefix = "[@freelensapp/resource-map-extension]";
 
 @observer
-export class KubeResourceChart extends React.Component<KubeResourceChartProps, State> {
+export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.Component<
+  KubeResourceChartProps<K>,
+  State
+> {
   @observable accessor isReady = false;
 
   static defaultProps: Partial<KubeResourceChartProps> = {
@@ -94,7 +98,7 @@ export class KubeResourceChart extends React.Component<KubeResourceChartProps, S
     fg?.d3Force("center", d3.forceCenter());
   };
 
-  constructor(props: KubeResourceChartProps) {
+  constructor(props: KubeResourceChartProps<K>) {
     super(props);
     this.generateImages();
   }
@@ -142,7 +146,7 @@ export class KubeResourceChart extends React.Component<KubeResourceChartProps, S
   }
 
   // mobx-react 10 does not let a reaction read this.props, so a new object of the host is handled here
-  componentDidUpdate(prevProps: KubeResourceChartProps) {
+  componentDidUpdate(prevProps: KubeResourceChartProps<K>) {
     if (prevProps.object === this.props.object) return;
     if (prevProps.object.getId() !== this.props.object.getId()) {
       this.displayChart();
