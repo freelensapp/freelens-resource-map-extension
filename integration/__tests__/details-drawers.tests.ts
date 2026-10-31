@@ -39,10 +39,12 @@ const catalogDeployment = "/apis/apps/v1/namespaces/shop/deployments/catalog";
 const statefulSet = "/apis/apps/v1/namespaces/shop/statefulsets/db";
 const daemonSet = "/apis/apps/v1/namespaces/shop/daemonsets/agent";
 const ingress = "/apis/networking.k8s.io/v1/namespaces/shop/ingresses/storefront";
+// A Deployment of the namespace that the session leaves out of the selection.
+const stockDeployment = "/apis/apps/v1/namespaces/inventory/deployments/stock";
 
 // A node by its kind, namespace and the start of its name, for the pods, whose names end with a random suffix.
-const has = (nodes: MapNode[], kind: string, name: string) =>
-  nodes.some((node) => node.kind === kind && node.namespace === "shop" && node.name.startsWith(name));
+const has = (nodes: MapNode[], kind: string, name: string, namespace = "shop") =>
+  nodes.some((node) => node.kind === kind && node.namespace === namespace && node.name.startsWith(name));
 
 describe.skipIf(!(await appReady({ cluster: true })))("details drawers tests", () => {
   let session: AppSession | undefined;
@@ -143,6 +145,39 @@ describe.skipIf(!(await appReady({ cluster: true })))("details drawers tests", (
     }
     expect(canvases).toBe(1);
     expect(errorPage).toBe(0);
+  });
+
+  it("draws the map of a Deployment of a namespace outside the selection, and adds none of its objects to the stores", async () => {
+    const drawer = await openDetails(frame, stockDeployment);
+
+    // The map lists the namespace, which the stores do not load, and draws its objects once the list is back.
+    await expect
+      .poll(async () => {
+        const nodes = await settledNodes(frame);
+        return [
+          ["Deployment", "stock"],
+          ["Pod", "stock-"],
+          ["Service", "stock"],
+          ["ConfigMap", "stock-config"],
+        ]
+          .filter(([kind, name]) => !has(nodes, kind, name, "inventory"))
+          .map(([kind, name]) => `${kind} ${name}`);
+      }, viewTimeout)
+      .toEqual([]);
+    expect(await mapOf(frame).locator("canvas").count()).toBe(1);
+    expect(await drawer.locator('[class*="_errorPage_"]').count()).toBe(0);
+    // No view of the host loads the Services and the ConfigMaps here, so whatever their stores hold comes from the map.
+    const held = await frame.evaluate(() => {
+      const api = globalThis.FreelensExtensionApi.Renderer?.K8sApi;
+      const objects: { kind: string; getNs(): string | undefined; getName(): string }[] = [
+        ...(api?.serviceStore.items ?? []),
+        ...(api?.configMapStore.items ?? []),
+      ];
+      return objects
+        .filter((object) => object.getNs() === "inventory")
+        .map((object) => `${object.kind} ${object.getName()}`);
+    });
+    expect(held).toEqual([]);
   });
 
   it("opens the object of a node clicked in a map, and stays open a second later", async () => {

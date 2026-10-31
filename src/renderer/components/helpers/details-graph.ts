@@ -47,6 +47,23 @@ export function buildIngressMap(ingress: Ingress, objects: DetailsGraphObjects, 
   return builder.graph();
 }
 
+/**
+ * The pods of a workload among `pods`, found as the host's stores find them
+ * among their items: for a Deployment, the pods of its namespace that carry
+ * every label of its pod template; for a StatefulSet or a DaemonSet, the pods
+ * that it owns. A details map finds with it the pods of a workload among the
+ * pods that it listed itself, which no store holds.
+ */
+export function childPodsOf(controller: Controller, pods: readonly Pod[]): Pod[] {
+  if (controller.kind === "Deployment") {
+    const labels = controller.getTemplateLabels();
+    return pods.filter(
+      (pod) => pod.getNs() === controller.getNs() && labels.every((label) => pod.getLabels().includes(label)),
+    );
+  }
+  return pods.filter((pod) => pod.getOwnerRefs().some((owner) => owner.uid === controller.getId()));
+}
+
 const byName = <K extends KubeObject>(items: readonly K[], name: string, namespace: string | undefined) =>
   items.find((item) => item.getName() === name && (!namespace || item.getNs() === namespace));
 

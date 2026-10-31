@@ -13,11 +13,13 @@ places: the "Resource Map" page of the cluster, with the host's namespace
 filter and a legend; a panel of the Workloads Overview; and a small map of the
 resources related to one object, in the details panels of the host's
 Deployments, DaemonSets, StatefulSets, Pods, Services and Ingresses. It reads
-only the host's stores. It has no custom resources, no preferences and no
-main-process logic, and it makes no HTTP request of its own. `README.md` lists
-the features. The Freelens extension docs (`docs/extensions/` in
-freelensapp/freelens) define the API contract, and this file the build,
-type-check and test patterns around it, each with its reason.
+the host's stores, and a details map lists with the host's APIs the namespace
+of its object when the stores do not load it. It has no custom resources, no
+preferences and no main-process logic, and every request it makes is a list or
+a watch that the host's stores and APIs send. `README.md` lists the features.
+The Freelens extension docs (`docs/extensions/` in freelensapp/freelens)
+define the API contract, and this file the build, type-check and test patterns
+around it, each with its reason.
 
 - **Language**: TypeScript 7.x
 - **Runtime**: Node.js >= 24.0.0, Freelens ^2.0.0 (extension API v2), the
@@ -165,10 +167,10 @@ src/
   renderer/components/tooltips/                   # The tooltip of a node, per kind, and MapTooltip, which shows it
                                                   # over the graph
   renderer/components/helpers/                    # Name, color, icon and size per kind; the node and link types;
-                                                  # the host's stores, the canvas colors and the object of a Helm
-                                                  # release; the builders of the graph of the selected namespaces
-                                                  # and of the details maps; the forces, the ref and the node points
-                                                  # of a graph; the size of a container
+                                                  # the host's stores and APIs, the canvas colors and the object of
+                                                  # a Helm release; the builders of the graph of the selected
+                                                  # namespaces and of the details maps; the forces, the ref and the
+                                                  # node points of a graph; the size of a container
   renderer/components/map-node-list.tsx           # MapNodeList, the hidden list of the nodes of a settled map
   renderer/components/workloads-overview-item.tsx # The Workloads Overview panel inside its error boundary
   renderer/components/error-boundary.tsx          # ErrorBoundary and its registration wrappers
@@ -271,9 +273,10 @@ workloads alone, and none of its release secrets links to it. The page and the
 panel draw the objects of the namespaces that the filter selects, a config map
 only when a pod links to it, a TLS secret only when a link reaches it, and a
 service account token secret only when a link other than a `secret` volume
-reaches it. A details map draws the objects related to its object that the
-stores hold in the object's namespace; the stores hold the namespaces of the
-filter. For a pod that no StatefulSet or DaemonSet owns, the Pod, Service and
+reaches it. A details map draws the objects related to its object in the
+object's namespace: those of the stores when they load that namespace, as they
+load the namespaces of the filter, and otherwise those that it lists itself
+("Data"). For a pod that no StatefulSet or DaemonSet owns, the Pod, Service and
 Ingress maps take as its Deployment the first one of its namespace all of whose
 `matchLabels` the pod carries; `matchExpressions` are not read, and a Deployment
 without `matchLabels` takes no pod. In the workload and Pod maps, only the first
@@ -316,16 +319,17 @@ position of the canvas.
 
 ### Data
 
-The graphs read the host's stores and nothing else: `Renderer.K8sApi.podsStore`,
+The graphs read the host's stores: `Renderer.K8sApi.podsStore`,
 `deploymentStore`, `statefulSetStore`, `daemonSetStore`, `serviceStore`,
 `ingressStore`, `pvcStore`, `configMapStore` and `secretsStore`, and
 `namespaceStore` for the namespaces that the filter selects. They take the
-stores from `getMapStores()` of `helpers/stores.ts`, and the page and the panel
-take the namespace store from `getNamespaceStore()`; a details map reads no
-namespace store. They are the host's singletons, shared with its own pages: a
-store that another view has loaded is there already, and what the map loads is
-what the host's lists show. Every request is a list or a watch of one of these
-stores, sent by the host.
+stores from `getMapStores()` of `helpers/stores.ts`, and the namespace store
+from `getNamespaceStore()`. They are the host's singletons, shared with its own
+pages: a store that another view has loaded is there already, and what the map
+loads is what the host's lists show. Every request is a list or a watch of one
+of these stores, sent by the host, or a list of a details map with one of the
+host's APIs of the same kinds, `Renderer.K8sApi.podsApi` and the others, which
+it takes from `getMapApis()`.
 
 A graph loads its stores in `componentDidMount`, one after the other:
 `loadAll()`, for the namespaces of the filter, then `subscribe()`, which starts
@@ -350,6 +354,29 @@ stores that have not loaded yet (`isLoaded`) and watches them all, reacts to the
 pods and to the store of its object's kind, and follows a new `object` from the
 host in `componentDidUpdate`. It does not load again when the selection changes:
 it keeps the stores and the graph it has.
+
+The object of a details map can be in a namespace that the stores do not load,
+when the filter selects other namespaces: a pod opened from the details of its
+node, or a drawer opened from a link. Its map then lists the nine kinds in that
+namespace itself, with the host's APIs (`list({ namespace })`), alongside the
+loads of the stores, and shows its spinner until both are done. The stores load
+the namespaces that the filter selects, and every namespace when it selects
+none (`namespaceStore.areAllSelectedImplicitly`, then `hasContext`). The map
+loads no store with that namespace: the stores are shared, and a `loadAll` with
+other namespaces would make them load and watch those in place of the
+selection, under the host's own views. The list has an `AbortController` of its
+own, which a newer list and `componentWillUnmount` abort, and a list that comes
+back aborted writes nothing. Kind by kind, the listed objects take the place of
+what the stores hold in that namespace: when the selection changes, the stores
+keep the items of the namespaces they no longer load, and no longer watch them,
+and the host adds the object of a drawer to the store of its kind, so what they
+hold there can be stale. A list that fails is logged as a warning, and its kind
+keeps what its store holds. With listed pods, the map finds the pods of a
+workload among its pods as the host's stores find them among theirs
+(`childPodsOf` of `helpers/details-graph.ts`): by the labels of the pod
+template for a Deployment, and by owner for a StatefulSet or a DaemonSet. No
+watch follows the listed objects; a new `object` from the host lists the
+namespace again, and the map is built again when the list is back.
 
 ### Tooltips, icons and clicks
 
@@ -1037,10 +1064,13 @@ process:
   drawer is a Service's, whose map loads the stores that no host view has
   loaded yet; then a Deployment, a StatefulSet, a DaemonSet, an Ingress and a
   pod. In each drawer it checks the "Resources" title, one canvas, the nodes
-  the map should hold and no error page of the boundary. It clicks the node of
-  a Deployment in the map of the Service and checks that the drawer shows the
-  Deployment, still a second later, and the node of the Helm release in the
-  map of its Deployment, which opens the release.
+  the map should hold and no error page of the boundary. Then it opens the
+  Deployment of `inventory`, which the selection leaves out, and checks that
+  its map draws the objects of that namespace and that the stores of the
+  Services and the ConfigMaps, which no host view loads there, hold none of
+  them. It clicks the node of a Deployment in the map of the Service and checks
+  that the drawer shows the Deployment, still a second later, and the node of
+  the Helm release in the map of its Deployment, which opens the release.
 
 One canvas in the container of a map shows that the guard of react-kapsule
 against the double mount of `React.StrictMode`, which Freelens dev renders in,
@@ -1048,9 +1078,10 @@ holds. The test objects are the same Deployment, Service and ConfigMap in the
 namespaces `shop` and `billing`, an Ingress with a TLS secret and a service
 backend, one without rules, one whose rule has no `http` and one with a
 `resource` backend, a StatefulSet with its headless Service and a DaemonSet,
-all in `shop`, and the release `catalog` of the local chart in `shop`, a
-Deployment and a Service that Helm marks with its label and annotation. The
-pods run a pause container:
+all in `shop`, the release `catalog` of the local chart in `shop`, a
+Deployment and a Service that Helm marks with its label and annotation, and a
+Deployment with its Service and ConfigMap in `inventory`, a namespace that no
+session selects. The pods run a pause container:
 the map reads specs, and needs no ingress controller. The drawers of a
 Deployment, a DaemonSet and a StatefulSet list their pods with the metrics of
 their namespace, which the host asks `metrics.k8s.io` for; kind has no metrics

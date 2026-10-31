@@ -1,5 +1,7 @@
-# The two namespaces of the test objects: the same names in both, so that a
-# session sees two nodes for two objects of the same kind and name.
+# The namespaces of the test objects. shop and billing have the same names in
+# both, so that a session sees two nodes for two objects of the same kind and
+# name; the sessions select those two. inventory stays outside the selection,
+# for the details map of an object whose namespace the stores do not load.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -9,3 +11,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: billing
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inventory

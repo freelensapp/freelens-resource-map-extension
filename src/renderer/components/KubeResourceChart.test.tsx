@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 
+import { Common } from "@freelensapp/extensions";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { observable } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { kubeObject, pod } from "../../../test/kube-objects";
+import { deployment, kubeObject, pod } from "../../../test/kube-objects";
+import { KubeControllerChart } from "./KubeControllerChart";
 import { KubePodChart } from "./KubePodChart";
+import { KubeServiceChart } from "./KubeServiceChart";
 
 import type { Renderer } from "@freelensapp/extensions";
 
@@ -57,6 +60,32 @@ function fakeStore(kind: string): FakeStore {
   return store;
 }
 
+// An API of the host, as far as a details map uses it: its kind, and the list
+// of the objects of one namespace among those it is given. It keeps the
+// namespace and the signal of every list.
+interface FakeApi {
+  kind: string;
+  objects: KubeObject[];
+  lists: string[];
+  signals: AbortSignal[];
+  list(options?: Renderer.K8sApi.KubeApiListOptions): Promise<KubeObject[] | null>;
+}
+
+function fakeApi(kind: string): FakeApi {
+  const api: FakeApi = {
+    kind,
+    objects: [],
+    lists: [],
+    signals: [],
+    async list(options) {
+      api.lists.push(options?.namespace ?? "");
+      if (options?.reqInit?.signal) api.signals.push(options.reqInit.signal);
+      return api.objects.filter((object) => object.getNs() === options?.namespace);
+    },
+  };
+  return api;
+}
+
 interface GraphProps {
   graphData: { nodes: ChartDataSeries[]; links: LinkObject[] };
 }
@@ -70,9 +99,19 @@ vi.mock("react-force-graph-2d", () => ({
   },
 }));
 
-const host = vi.hoisted(() => ({ stores: {} as Record<string, FakeStore> }));
+const host = vi.hoisted(() => ({
+  stores: {} as Record<string, FakeStore>,
+  apis: {} as Record<string, FakeApi>,
+  // The namespaces that the filter selects; selecting none selects them all.
+  selected: [] as string[],
+}));
 vi.mock("./helpers/stores", () => ({
   getMapStores: () => host.stores,
+  getMapApis: () => host.apis,
+  getNamespaceStore: () => ({
+    areAllSelectedImplicitly: host.selected.length === 0,
+    hasContext: (namespace: string) => host.selected.includes(namespace),
+  }),
   canListMapStore: () => true,
 }));
 vi.mock("./helpers/theme-colors", () => ({
@@ -98,8 +137,11 @@ class NoResizeObserver {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.stubGlobal("ResizeObserver", NoResizeObserver);
   host.stores = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeStore(kind)]));
+  host.apis = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeApi(kind)]));
+  host.selected = [];
   graph.props = undefined;
 });
 
@@ -109,6 +151,7 @@ afterEach(() => {
 });
 
 const stores = () => Object.values(host.stores);
+const apis = () => Object.values(host.apis);
 const linkIds = () =>
   graph.props?.graphData.links
     .map((link) => `${(link.source as ChartDataSeries).id} -> ${(link.target as ChartDataSeries).id}`)
@@ -153,5 +196,129 @@ describe("KubeResourceChart", () => {
     rerender(<KubePodChart object={pod("web-1", "shop", { labels: { app: "api" } })} />);
 
     expect(linkIds()).toEqual([]);
+  });
+
+  describe("for an object of a namespace that the stores do not load", () => {
+    const stock = () => deployment("stock", "inventory", { app: "stock" });
+    const stockLinks = [
+      "Deployment/inventory/stock -> Pod/inventory/stock-1",
+      "Pod/inventory/stock-1 -> Service/inventory/stock",
+    ];
+
+    const stockService = () =>
+      kubeObject<Renderer.K8sApi.Service>(
+        "Service",
+        { name: "stock", namespace: "inventory" },
+        { spec: { selector: { app: "stock" } } },
+      );
+
+    beforeEach(() => {
+      host.selected = ["shop"];
+      host.apis.deployments.objects = [stock()];
+      host.apis.pods.objects = [pod("stock-1", "inventory", { labels: { app: "stock" } })];
+      host.apis.services.objects = [stockService()];
+    });
+
+    it.each([
+      ["have loaded already", true],
+      ["load with the map", false],
+    ])(
+      "lists the namespace once under React.StrictMode when the stores %s, and draws its objects without adding them to the stores",
+      async (_case, loaded) => {
+        const object = stock();
+        // The host puts the object of a panel that its stores do not hold in the store of its kind.
+        host.stores.deployments.items.replace([object]);
+        for (const store of stores()) store.isLoaded = loaded;
+
+        render(
+          <React.StrictMode>
+            <KubeControllerChart object={object} />
+          </React.StrictMode>,
+        );
+        await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+
+        expect(apis().map((api) => api.lists)).toEqual(apis().map(() => ["inventory"]));
+        expect(stores().map((store) => store.loads)).toEqual(stores().map(() => (loaded ? 0 : 1)));
+        expect(stores().map((store) => store.items.slice())).toEqual(
+          stores().map((store) => (store === host.stores.deployments ? [object] : [])),
+        );
+      },
+    );
+
+    it.each([
+      ["selects it", ["shop", "inventory"]],
+      ["selects none, and the stores load every namespace", []],
+    ])("lists nothing when the filter %s", async (_case, selected) => {
+      host.selected = selected;
+
+      render(<KubeControllerChart object={stock()} />);
+      await waitFor(() =>
+        expect(graph.props?.graphData.nodes.map((node) => node.id)).toEqual(["Deployment/inventory/stock"]),
+      );
+
+      expect(apis().flatMap((api) => api.lists)).toEqual([]);
+    });
+
+    it("lists the namespace again for a new instance of its object, and draws what the list returns", async () => {
+      const { rerender } = render(<KubeControllerChart object={stock()} />);
+      await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+      host.apis.pods.objects.push(pod("stock-2", "inventory", { labels: { app: "stock" } }));
+
+      rerender(<KubeControllerChart object={stock()} />);
+
+      await waitFor(() =>
+        expect(linkIds()).toEqual([
+          "Deployment/inventory/stock -> Pod/inventory/stock-1",
+          "Deployment/inventory/stock -> Pod/inventory/stock-2",
+          "Pod/inventory/stock-1 -> Service/inventory/stock",
+          "Pod/inventory/stock-2 -> Service/inventory/stock",
+        ]),
+      );
+      expect(host.apis.pods.lists).toEqual(["inventory", "inventory"]);
+    });
+
+    it("draws the listed objects of the namespace in place of those that the stores still hold there", async () => {
+      // Loaded for an earlier selection of the filter, and deleted since.
+      host.stores.pods.items.replace([pod("stock-0", "inventory", { labels: { app: "stock" } })]);
+
+      render(<KubeServiceChart object={stockService()} />);
+
+      await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+    });
+
+    it("logs a list that fails as a warning, and keeps for its kind what the store holds in the namespace", async () => {
+      const forbidden = new Error("services is forbidden");
+      host.apis.services.list = async () => {
+        throw forbidden;
+      };
+      // Loaded for an earlier selection of the filter.
+      host.stores.services.items.replace([stockService()]);
+
+      render(<KubeControllerChart object={stock()} />);
+      await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+
+      expect(Common.logger.warn).toHaveBeenCalledWith(
+        "[@freelensapp/resource-map-extension]: cannot list the Service objects of the namespace inventory",
+        forbidden,
+      );
+    });
+
+    it("aborts a list that has not come back when it unmounts, and logs nothing", async () => {
+      const { pods } = host.apis;
+      pods.list = (options) => {
+        const signal = options?.reqInit?.signal;
+        pods.lists.push(options?.namespace ?? "");
+        if (signal) pods.signals.push(signal);
+        return new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(signal.reason)));
+      };
+      const { unmount } = render(<KubeControllerChart object={stock()} />);
+      await waitFor(() => expect(pods.lists).toEqual(["inventory"]));
+
+      unmount();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(pods.signals.map((signal) => signal.aborted)).toEqual([true]);
+      expect(Common.logger.warn).not.toHaveBeenCalled();
+    });
   });
 });

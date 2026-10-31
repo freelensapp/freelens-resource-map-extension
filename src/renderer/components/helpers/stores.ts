@@ -47,7 +47,27 @@ export function canListMapStore(key: keyof MapStores): boolean {
   return Renderer.K8sApi.isAllowedResource(mapStoreResources[key]);
 }
 
-/** The host's namespace store, whose selection the page and the panel follow. */
+/**
+ * The host's APIs of the kinds of the stores. A details map lists with them
+ * the objects of a namespace that the stores do not hold, which leaves the
+ * stores as the host's own views expect them.
+ */
+export function getMapApis() {
+  const { K8sApi } = Renderer;
+  return {
+    pods: K8sApi.podsApi,
+    deployments: K8sApi.deploymentApi,
+    statefulSets: K8sApi.statefulSetApi,
+    daemonSets: K8sApi.daemonSetApi,
+    services: K8sApi.serviceApi,
+    ingresses: K8sApi.ingressApi,
+    pvcs: K8sApi.pvcApi,
+    configMaps: K8sApi.configMapApi,
+    secrets: K8sApi.secretsApi,
+  };
+}
+
+/** The host's namespace store, whose selection the maps follow. */
 export function getNamespaceStore() {
   return Renderer.K8sApi.namespaceStore;
 }

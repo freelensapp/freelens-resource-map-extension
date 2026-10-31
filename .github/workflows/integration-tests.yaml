@@ -263,15 +263,16 @@ jobs:
 
       # The test objects of the sessions, from integration/fixtures: the same
       # names in the namespaces shop and billing, the Ingresses that the map
-      # takes without an error, and a release of the local chart. The map reads
-      # their specs: the pods run a pause container, and no ingress controller
-      # is needed.
+      # takes without an error, a Deployment in inventory, which the sessions
+      # leave out of the selection, and a release of the local chart. The map
+      # reads their specs: the pods run a pause container, and no ingress
+      # controller is needed.
       - name: Apply the test objects
         run: |
           kubectl --context kind-freelens apply -f integration/fixtures/resource-map
           helm --kube-context kind-freelens upgrade --install catalog integration/fixtures/charts/catalog \
             --namespace shop --wait --timeout 180s
-          for namespace in shop billing; do
+          for namespace in shop billing inventory; do
             kubectl --context kind-freelens --namespace "$namespace" rollout status deployment --timeout 180s
           done
           kubectl --context kind-freelens --namespace shop rollout status statefulset/db daemonset/agent --timeout 180s

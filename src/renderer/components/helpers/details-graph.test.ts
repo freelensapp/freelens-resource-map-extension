@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deployment, kubeObject, pod, secret } from "../../../../test/kube-objects";
-import { buildControllerMap, buildIngressMap, buildPodMap, buildServiceMap } from "./details-graph";
+import { buildControllerMap, buildIngressMap, buildPodMap, buildServiceMap, childPodsOf } from "./details-graph";
 
 import type { Renderer } from "@freelensapp/extensions";
 
@@ -124,6 +124,24 @@ describe("the builders of the details maps", () => {
 
     expect(linkIds(buildPodMap(web1, input))).toEqual(["Deployment/shop/web -> Pod/shop/web-1"]);
     expect(linkIds(buildPodMap(api1, input))).toEqual([]);
+  });
+
+  it("find the pods of a workload among the pods they are given, as the host's stores do", () => {
+    const web = deployment("web", "shop", { app: "web" });
+    const db = kubeObject<Renderer.K8sApi.StatefulSet>("StatefulSet", { name: "db", namespace: "shop" });
+    const agent = kubeObject<Renderer.K8sApi.DaemonSet>("DaemonSet", { name: "agent", namespace: "shop" });
+    const pods = [
+      pod("web-1", "shop", { labels: { app: "web", tier: "front" } }),
+      pod("web-2", "billing", { labels: { app: "web" } }),
+      pod("api-1", "shop", { labels: { app: "api" } }),
+      pod("db-0", "shop", { owner: { kind: "StatefulSet", name: "db" } }),
+      pod("agent-1", "shop", { owner: { kind: "DaemonSet", name: "agent" } }),
+    ];
+    const names = (found: readonly Renderer.K8sApi.Pod[]) => found.map((item) => item.getName());
+
+    expect(names(childPodsOf(web, pods))).toEqual(["web-1"]);
+    expect(names(childPodsOf(db, pods))).toEqual(["db-0"]);
+    expect(names(childPodsOf(agent, pods))).toEqual(["agent-1"]);
   });
   describe("on what the maps draw", () => {
     const web1 = pod("web-1", "shop", {

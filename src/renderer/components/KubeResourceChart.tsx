@@ -4,6 +4,7 @@ import { observer } from "mobx-react";
 import React from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { config } from "./helpers/config";
+import { childPodsOf, type DetailsGraph, type DetailsGraphObjects } from "./helpers/details-graph";
 import { ElementSize } from "./helpers/element-size";
 import {
   applyMapForces,
@@ -14,16 +15,16 @@ import {
 } from "./helpers/graph-methods";
 import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { sameGraph } from "./helpers/namespace-graph";
-import { canListMapStore, getMapStores, type MapStores } from "./helpers/stores";
+import { canListMapStore, getMapApis, getMapStores, getNamespaceStore, type MapStores } from "./helpers/stores";
 import { getCanvasColors } from "./helpers/theme-colors";
 import styles from "./KubeForceChart.module.scss";
 import { MapNodeList } from "./map-node-list";
 import { MapTooltip } from "./tooltips/map-tooltip";
 
-import type { DetailsGraph, DetailsGraphObjects } from "./helpers/details-graph";
 import type { ChartDataSeries, LinkObject } from "./helpers/types";
 
 type KubeObject = Renderer.K8sApi.KubeObject;
+type Controller = Renderer.K8sApi.Deployment | Renderer.K8sApi.StatefulSet | Renderer.K8sApi.DaemonSet;
 
 export interface KubeResourceChartProps<K extends KubeObject = KubeObject> {
   /** The object of the details panel, of the class that the registration names. */
@@ -47,6 +48,36 @@ interface MapStore {
   subscribe(params?: Renderer.K8sApi.KubeObjectStoreSubscribeParams): () => void;
 }
 
+/** What the map needs of an API of the host: its kind, and the list of the objects of one namespace. */
+interface MapApi<T extends KubeObject> {
+  readonly kind: string;
+  list(options?: Renderer.K8sApi.KubeApiListOptions): Promise<T[] | null>;
+}
+
+/** The objects of the kinds of the stores, as a details map lists them for a namespace; a kind whose list failed has none. */
+type MapObjects = Partial<Omit<DetailsGraphObjects, "childPods">>;
+
+// Whether the stores load the objects of a namespace: they load the namespaces
+// that the filter selects, and all of them when it selects none.
+function storesLoad(namespace: string) {
+  const namespaceStore = getNamespaceStore();
+  return namespaceStore.areAllSelectedImplicitly || namespaceStore.hasContext(namespace);
+}
+
+// The items of a store, where the listed objects of its kind, when its list
+// came back, take the place of those the store holds in the listed namespace.
+// The store does not watch that namespace: what it holds there is what a view
+// loaded once, such as the object of a panel, or what the stores loaded for an
+// earlier selection of the filter, which they keep when it changes.
+function withListed<T extends KubeObject>(
+  held: readonly T[],
+  namespace: string,
+  listed: readonly T[] | undefined,
+): readonly T[] {
+  if (!listed) return held;
+  return [...held.filter((object) => object.getNs() !== namespace), ...listed];
+}
+
 // The store of the kind of the object of a panel: its changes, with those of
 // the pods, build the map again.
 const storeOfKind: Partial<Record<string, keyof MapStores>> = {
@@ -62,8 +93,9 @@ const logPrefix = "[@freelensapp/resource-map-extension]";
 
 /**
  * The map in the details panel of an object: the objects around it in its
- * namespace, from the host's stores. Each subclass names the class of the
- * object that its registration draws, and builds its map with the builder of
+ * namespace, from the host's stores, or listed by the map when the stores do
+ * not load that namespace. Each subclass names the class of the object that
+ * its registration draws, and builds its map with the builder of
  * `helpers/details-graph.ts` for that kind.
  */
 @observer
@@ -98,6 +130,9 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   private readonly stores = getMapStores();
   private listable = new Set<keyof MapStores>();
   private loading?: AbortController;
+  private listing?: AbortController;
+  // The objects of the namespace of the object, listed when the stores do not load it.
+  private listed?: { namespace: string; objects: MapObjects };
   private watchDisposers: (() => void)[] = [];
   private disposers: (() => void)[] = [];
   private settleTimer?: ReturnType<typeof setTimeout>;
@@ -141,15 +176,22 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   // mobx-react 10 does not let a reaction read this.props, so a new object of the host is handled here
   componentDidUpdate(prevProps: KubeResourceChartProps<K>) {
     if (prevProps.object === this.props.object) return;
+    // A new object lists its namespace again, when the stores do not load it,
+    // and the map is built again once the list is back.
+    const listing = this.listNamespace();
     if (prevProps.object.getId() !== this.props.object.getId()) {
       this.displayChart();
     } else {
       this.refreshChart();
     }
+    void listing.then((listed) => {
+      if (listed && this.isReady) this.refreshChart();
+    });
   }
 
   componentWillUnmount() {
     this.stopLoading();
+    this.listed = undefined;
     this.disposers.forEach((disposer) => disposer());
     this.disposers.length = 0;
     clearTimeout(this.settleTimer);
@@ -162,7 +204,9 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
    * watches every store, with one abort controller for the loads and the
    * watches: the unmount aborts it, and a load that comes back aborted writes
    * nothing. A list that fails reaches `onLoadFailure` and is logged as a
-   * warning, and the map draws the rest.
+   * warning, and the map draws the rest. Meanwhile it lists the namespace of
+   * the object, when the stores do not load it, and draws the map once both
+   * are done.
    */
   private async load() {
     this.stopLoading();
@@ -174,6 +218,7 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
     // store, which it logs as an error. One turn first lets that mount stop.
     await Promise.resolve();
     if (controller.signal.aborted) return;
+    const listing = this.listNamespace();
     for (const key of this.listable) {
       const store: MapStore = this.stores[key];
       if (!store.isLoaded) {
@@ -187,15 +232,76 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
       }
       this.watchDisposers.push(store.subscribe({ abortController: controller }));
     }
+    await listing;
+    if (controller.signal.aborted) return;
     runInAction(() => {
       this.isReady = true;
     });
     this.displayChart();
   }
 
+  /**
+   * Lists the objects of the namespace of the object when the stores do not
+   * load it: the filter selects other namespaces, and the panel shows an
+   * object opened from elsewhere, such as a pod from the details of its node.
+   * The objects are the map's own: the stores keep the namespaces of the
+   * filter, as the host's views expect them, and no watch follows the listed
+   * objects. Resolves to whether it listed them, and no newer listing, nor
+   * the unmount, aborted it.
+   */
+  private async listNamespace(): Promise<boolean> {
+    this.listing?.abort();
+    this.listing = undefined;
+    const namespace = this.props.object.getNs();
+    if (!namespace || storesLoad(namespace)) {
+      this.listed = undefined;
+      return false;
+    }
+    const controller = new AbortController();
+    this.listing = controller;
+    const objects = await this.listObjects(namespace, controller.signal);
+    if (controller.signal.aborted) return false;
+    this.listing = undefined;
+    this.listed = { namespace, objects };
+    return true;
+  }
+
+  // The objects of every kind that the user may list, in one namespace, with
+  // the host's APIs. A list that fails is logged as a warning, and the map
+  // keeps what the store of its kind holds there.
+  private async listObjects(namespace: string, signal: AbortSignal): Promise<MapObjects> {
+    const apis = getMapApis();
+    const list = async <T extends KubeObject>(key: keyof MapStores, api: MapApi<T>): Promise<T[] | undefined> => {
+      if (!this.listable.has(key)) return undefined;
+      try {
+        return (await api.list({ namespace, reqInit: { signal } })) ?? [];
+      } catch (error) {
+        if (!signal.aborted) {
+          Common.logger.warn(`${logPrefix}: cannot list the ${api.kind} objects of the namespace ${namespace}`, error);
+        }
+        return undefined;
+      }
+    };
+    const [pods, deployments, statefulSets, daemonSets, services, ingresses, pvcs, configMaps, secrets] =
+      await Promise.all([
+        list("pods", apis.pods),
+        list("deployments", apis.deployments),
+        list("statefulSets", apis.statefulSets),
+        list("daemonSets", apis.daemonSets),
+        list("services", apis.services),
+        list("ingresses", apis.ingresses),
+        list("pvcs", apis.pvcs),
+        list("configMaps", apis.configMaps),
+        list("secrets", apis.secrets),
+      ]);
+    return { pods, deployments, statefulSets, daemonSets, services, ingresses, pvcs, configMaps, secrets };
+  }
+
   private stopLoading() {
     this.loading?.abort();
     this.loading = undefined;
+    this.listing?.abort();
+    this.listing = undefined;
     this.watchDisposers.forEach((dispose) => dispose());
     this.watchDisposers.length = 0;
   }
@@ -252,24 +358,35 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
     return this.listable.has(key) ? this.stores[key].items : [];
   }
 
+  // The items of the stores, with the objects listed for the namespace of the
+  // object. The builders look in that namespace only, so the objects of the
+  // namespace of a previous object, until the list of the new one is back,
+  // add nothing.
   private mapObjects(): DetailsGraphObjects {
-    const { stores } = this;
+    const { namespace = "", objects: listed = {} } = this.listed ?? {};
+    const pods = withListed(this.itemsOf("pods"), namespace, listed.pods);
     return {
-      pods: this.itemsOf("pods"),
-      deployments: this.itemsOf("deployments"),
-      statefulSets: this.itemsOf("statefulSets"),
-      daemonSets: this.itemsOf("daemonSets"),
-      services: this.itemsOf("services"),
-      ingresses: this.itemsOf("ingresses"),
-      pvcs: this.itemsOf("pvcs"),
-      configMaps: this.itemsOf("configMaps"),
-      secrets: this.itemsOf("secrets"),
-      childPods: (controller) => {
-        if (controller instanceof Renderer.K8sApi.Deployment) return stores.deployments.getChildPods(controller);
-        if (controller instanceof Renderer.K8sApi.StatefulSet) return stores.statefulSets.getChildPods(controller);
-        return stores.daemonSets.getChildPods(controller);
-      },
+      pods,
+      deployments: withListed(this.itemsOf("deployments"), namespace, listed.deployments),
+      statefulSets: withListed(this.itemsOf("statefulSets"), namespace, listed.statefulSets),
+      daemonSets: withListed(this.itemsOf("daemonSets"), namespace, listed.daemonSets),
+      services: withListed(this.itemsOf("services"), namespace, listed.services),
+      ingresses: withListed(this.itemsOf("ingresses"), namespace, listed.ingresses),
+      pvcs: withListed(this.itemsOf("pvcs"), namespace, listed.pvcs),
+      configMaps: withListed(this.itemsOf("configMaps"), namespace, listed.configMaps),
+      secrets: withListed(this.itemsOf("secrets"), namespace, listed.secrets),
+      // The stores' methods see the pods of the store alone: with listed pods,
+      // those of a workload are found among the pods of the map in their way.
+      childPods: (controller) => (listed.pods ? childPodsOf(controller, pods) : this.heldChildPods(controller)),
     };
+  }
+
+  // The pods of a workload among the items of the store of the pods, as the store of its kind finds them.
+  private heldChildPods(controller: Controller) {
+    const { stores } = this;
+    if (controller instanceof Renderer.K8sApi.Deployment) return stores.deployments.getChildPods(controller);
+    if (controller instanceof Renderer.K8sApi.StatefulSet) return stores.statefulSets.getChildPods(controller);
+    return stores.daemonSets.getChildPods(controller);
   }
 
   getLinksForNode(node: ChartDataSeries): LinkObject[] {
