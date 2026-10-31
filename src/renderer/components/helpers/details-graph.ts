@@ -59,6 +59,11 @@ const selects = (selector: Partial<Record<string, string>>, pod: Pod) => {
   return Object.entries(selector).every(([key, value]) => labels[key] === value);
 };
 
+// The id of the node of an object: its kind, namespace and name.
+function nodeId(object: KubeObject) {
+  return `${object.kind}/${object.getNs() ?? ""}/${object.getName()}`;
+}
+
 // The ids of the ends of a link, which force-graph turns from ids into nodes.
 function linkKey(link: LinkObject) {
   const id = (end: LinkObject["source"]) => (typeof end === "object" ? end.id : end);
@@ -69,6 +74,7 @@ class DetailsGraphBuilder {
   readonly nodes: ChartDataSeries[] = [];
   readonly links: LinkObject[] = [];
   private readonly linkKeys = new Set<string>();
+  private readonly nodesById = new Map<string, ChartDataSeries>();
   private readonly previousNodes: Map<string, ChartDataSeries>;
   private readonly previousLinks: Map<string, LinkObject>;
   // The namespace of the object of the panel, where the Services and the Ingresses are looked up.
@@ -148,20 +154,17 @@ class DetailsGraphBuilder {
     });
   }
 
-  // The node of an object of the same kind and name in any namespace.
   private findNode(object: KubeObject) {
-    return this.nodes.find(
-      (node) => node.kind == object.kind && node.namespace && object.getNs() && node.name == object.getName(),
-    );
+    return this.nodesById.get(nodeId(object));
   }
 
   private addNode(object: KubeObject): ChartDataSeries {
-    const existingNode = this.findNode(object);
+    const id = nodeId(object);
+    const existingNode = this.nodesById.get(id);
     if (existingNode) {
       return existingNode;
     }
 
-    const id = `${object.kind}-${object.getName()}`;
     const { color, img, size } = config[object.kind.toLowerCase()];
     const node: ChartDataSeries = Object.assign(this.previousNodes.get(id) ?? {}, {
       id,
@@ -175,6 +178,7 @@ class DetailsGraphBuilder {
       visible: true,
     });
     this.nodes.push(node);
+    this.nodesById.set(id, node);
     return node;
   }
 
@@ -267,7 +271,9 @@ class DetailsGraphBuilder {
           const backend = path.backend as { serviceName?: string; service?: { name?: string } } | undefined;
           const serviceName = backend?.serviceName || backend?.service?.name;
           if (!serviceName) return;
-          const serviceNode = this.nodes.find((node) => node.kind === "Service" && node.name === serviceName);
+          const serviceNode = this.nodes.find(
+            (node) => node.kind === "Service" && node.name === serviceName && node.namespace === ingress.getNs(),
+          );
           if (serviceNode) {
             ingressNode ??= this.addIngress(ingress);
             this.addLink({ source: ingressNode, target: serviceNode });

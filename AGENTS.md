@@ -298,8 +298,7 @@ draws on every frame (`autoPauseRedraw={false}`), shows the refreshed nodes
 where they are. A load of the stores, when the graph mounts and when the
 selection changes, starts from no previous graph. A details map builds its graph
 in the same way, around its object and in its namespace, with the builder of its
-kind. Its node id is still the kind and the name, and a node of the same kind
-and name from another namespace is the same node.
+kind. Its node id is the kind, the namespace and the name of its object as well.
 
 When the graph of the page or the panel stops after its first zoom
 (`onEngineStop`), the map marks its container with `data-settled` and fills a

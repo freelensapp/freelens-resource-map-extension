@@ -63,30 +63,52 @@ describe("the builders of the details maps", () => {
       ingresses: [...oddIngresses, storefront],
       childPods: (controller) => (controller === web ? [web1] : []),
     });
-    const servesWeb = "Ingress-storefront -> Service-web";
+    const servesWeb = "Ingress/shop/storefront -> Service/shop/web";
 
     expect(linkIds(buildControllerMap(web, input))).toEqual([
-      "Deployment-web -> Pod-web-1",
+      "Deployment/shop/web -> Pod/shop/web-1",
       servesWeb,
-      "Pod-web-1 -> Service-web",
+      "Pod/shop/web-1 -> Service/shop/web",
     ]);
     expect(linkIds(buildPodMap(web1, input))).toEqual([
-      "Deployment-web -> Pod-web-1",
+      "Deployment/shop/web -> Pod/shop/web-1",
       servesWeb,
-      "Pod-web-1 -> Service-web",
+      "Pod/shop/web-1 -> Service/shop/web",
     ]);
     expect(linkIds(buildServiceMap(webService, input))).toEqual([
-      "Deployment-web -> Pod-web-1",
+      "Deployment/shop/web -> Pod/shop/web-1",
       servesWeb,
-      "Pod-web-1 -> Service-web",
+      "Pod/shop/web-1 -> Service/shop/web",
     ]);
     expect(linkIds(buildIngressMap(storefront, input))).toEqual([
-      "Deployment-web -> Pod-web-1",
+      "Deployment/shop/web -> Pod/shop/web-1",
       servesWeb,
-      "Pod-web-1 -> Service-web",
+      "Pod/shop/web-1 -> Service/shop/web",
     ]);
     for (const odd of oddIngresses) {
       expect(buildIngressMap(odd, input).links).toEqual([]);
     }
+  });
+
+  it("draw two objects of the same kind and name from two namespaces as two nodes", () => {
+    // The Deployment of a pod is the first in the store whose selectors the pod carries, in any namespace.
+    const billingWeb = deployment("web", "billing", { app: "web" });
+    const shopWeb = deployment("web", "shop", { app: "api" });
+    const front = service("front", "shop", { tier: "front" });
+    const input = objects({
+      pods: [
+        pod("web-1", "shop", { labels: { app: "web", tier: "front" } }),
+        pod("api-1", "shop", { labels: { app: "api", tier: "front" } }),
+      ],
+      deployments: [billingWeb, shopWeb],
+      services: [front],
+    });
+
+    expect(linkIds(buildServiceMap(front, input))).toEqual([
+      "Deployment/billing/web -> Pod/shop/web-1",
+      "Deployment/shop/web -> Pod/shop/api-1",
+      "Pod/shop/api-1 -> Service/shop/front",
+      "Pod/shop/web-1 -> Service/shop/front",
+    ]);
   });
 });
