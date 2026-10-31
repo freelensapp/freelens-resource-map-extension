@@ -18,7 +18,9 @@ export class KubeResourcePage extends React.Component {
           </div>
         </header>
 
-        <KubeForceChart />
+        <div className={styles.map}>
+          <KubeForceChart />
+        </div>
       </Renderer.Component.TabLayout>
     );
   }
@@ -32,7 +34,7 @@ export function KubeResourceOverviewDetail() {
         <h5>Resources</h5>
       </div>
       <div className={styles.overviewContent}>
-        <KubeForceChart height={480} />
+        <KubeForceChart />
       </div>
     </div>
   );

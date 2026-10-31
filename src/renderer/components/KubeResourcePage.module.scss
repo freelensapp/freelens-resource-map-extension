@@ -3,12 +3,22 @@
 .kubeResourcePage {
   padding: vars.$padding * 2;
 
+  // the host's <main> of the TabLayout: the header, and the map below it in
+  // the rest of the page
   main {
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
 }
 
+.map {
+  flex: 1;
+  min-height: 0;
+}
+
 .header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: vars.$padding;
@@ -45,6 +55,8 @@
   }
 }
 
+// the map of the panel, as wide as the panel and 480 px high
 .overviewContent {
+  height: 480px;
   margin: 0 vars.$unit * 2 vars.$unit * 2;
 }

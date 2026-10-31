@@ -5,6 +5,7 @@ import { observer } from "mobx-react";
 import React from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { config } from "./helpers/config";
+import { ElementSize } from "./helpers/element-size";
 import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { buildNamespaceGraph, type NamespaceGraphObjects, sameGraph } from "./helpers/namespace-graph";
 import { canListMapStore, getMapStores, getNamespaceStore, type MapStores } from "./helpers/stores";
@@ -13,11 +14,6 @@ import styles from "./KubeForceChart.module.scss";
 import { MapTooltip } from "./tooltips/map-tooltip";
 
 import type { ChartDataSeries, LinkObject } from "./helpers/types";
-
-export interface KubeForceChartProps {
-  width?: number;
-  height?: number;
-}
 
 interface State {
   data: {
@@ -67,7 +63,7 @@ function refWithSetter<T>(onSet: (value: T | null | undefined) => void): React.M
 }
 
 @observer
-export class KubeForceChart extends React.Component<KubeForceChartProps, State> {
+export class KubeForceChart extends React.Component<object, State> {
   @observable accessor isReady = false;
   @observable accessor noResourcesFound = false;
   /** The graph has stopped moving and has its first zoom: its nodes stay where they are. */
@@ -90,6 +86,9 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
     }
   });
   private readonly tooltip = React.createRef<MapTooltip>();
+  // The size of the container, which the graph takes.
+  private readonly size = new ElementSize();
+  private readonly followContainer = (element: HTMLDivElement | null) => this.size.follow(element);
 
   private readonly namespaceStore = getNamespaceStore();
   private readonly stores = getMapStores();
@@ -113,7 +112,7 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
 
   initZoomDone = false;
 
-  constructor(props: KubeForceChartProps) {
+  constructor(props: object) {
     super(props);
     this.generateImages();
   }
@@ -321,13 +320,11 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
 
     const colors = getCanvasColors();
 
-    const { width, height } = this.props;
     const { hoverNode } = this.state;
-    const sidebarWidth =
-      (document.querySelectorAll('[data-testid="cluster-sidebar"]')[0] as HTMLElement | undefined)?.offsetWidth || 200;
 
     return (
       <div
+        ref={this.followContainer}
         className={styles.kubeForceChart}
         data-settled={this.settled || undefined}
         onMouseMove={(event) => this.tooltip.current?.follow(event)}
@@ -352,8 +349,8 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
         <ForceGraph2D
           graphData={this.state.data}
           ref={this.chartRef}
-          width={width || window.innerWidth - 70 - sidebarWidth}
-          height={height || window.innerHeight}
+          width={this.size.width}
+          height={this.size.height}
           autoPauseRedraw={false}
           linkWidth={(link) => (this.state.highlightLinks.has(link) ? 2 : 1)}
           maxZoom={2}

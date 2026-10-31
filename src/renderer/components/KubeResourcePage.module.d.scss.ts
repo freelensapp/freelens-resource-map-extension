@@ -1,5 +1,6 @@
 declare const classNames: {
   readonly kubeResourcePage: "kubeResourcePage";
+  readonly map: "map";
   readonly header: "header";
   readonly title: "title";
   readonly namespaceFilter: "namespaceFilter";

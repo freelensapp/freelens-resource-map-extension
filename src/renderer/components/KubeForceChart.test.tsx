@@ -57,8 +57,34 @@ function fakeStore(kind: string): FakeStore {
   return store;
 }
 
+// jsdom has no ResizeObserver: this one hands the sizes that a test sets to
+// the callback of the observer.
+class FakeResizeObserver {
+  static last?: FakeResizeObserver;
+  element?: Element;
+  disconnected = false;
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    FakeResizeObserver.last = this;
+  }
+
+  observe(element: Element) {
+    this.element = element;
+  }
+
+  disconnect() {
+    this.disconnected = true;
+  }
+
+  resize(width: number, height: number) {
+    this.callback([{ contentRect: { width, height } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+  }
+}
+
 interface GraphProps {
   graphData: { nodes: ChartDataSeries[]; links: LinkObject[] };
+  width: number;
+  height: number;
   onNodeHover(node: ChartDataSeries | null, previous: ChartDataSeries | null): void;
   onEngineStop(): void;
   onNodeClick(node: ChartDataSeries, event: MouseEvent): void;
@@ -120,6 +146,8 @@ const kinds = {
 let selection: IObservableArray<string>;
 
 beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  FakeResizeObserver.last = undefined;
   host.stores = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeStore(kind)]));
   host.listable = new Set(Object.keys(kinds));
   selection = observable.array(["shop"]);
@@ -140,6 +168,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const drawnIds = () => graph.props?.graphData.nodes.map((node) => node.id).sort();
@@ -210,6 +239,26 @@ describe("KubeForceChart", () => {
     act(() => graph.props?.onNodeHover(null, null));
 
     expect(tooltip.style.display).toBe("none");
+  });
+
+  it("gives the graph the size of its container, and the new size when the container resizes", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    const { container, unmount } = render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    const observer = FakeResizeObserver.last;
+    expect(observer?.element).toBe(container.querySelector("[data-testid=resource-map-nodes]")?.parentElement);
+
+    act(() => observer?.resize(812.5, 480));
+
+    expect(graph.props).toMatchObject({ width: 812, height: 480 });
+
+    act(() => observer?.resize(1024, 600));
+
+    expect(graph.props).toMatchObject({ width: 1024, height: 600 });
+
+    unmount();
+
+    expect(observer?.disconnected).toBe(true);
   });
 
   it("opens a Helm release on its route when its node is clicked", async () => {

@@ -240,6 +240,14 @@ of the node under the pointer are drawn thicker.
 every kind, and `helpers/types.ts` the node and link types, built on those of
 `react-force-graph-2d`.
 
+The page and the panel give the graph the size of their container, which
+`ElementSize` of `helpers/element-size.ts` follows with a `ResizeObserver`.
+On the page the container fills the page below its header: the host's
+`<main>` of the `TabLayout` is a flex column there, and the map takes the
+rest of it. In the panel it is 480 px high and as wide as the panel. A
+details map takes the width of an element that it finds by its id, and a
+height of 400 px.
+
 The nodes are the pods, deployments, stateful sets, daemon sets, services,
 ingresses, persistent volume claims, config maps and secrets, and the Helm
 releases they belong to. The links are the relations that the objects declare:
