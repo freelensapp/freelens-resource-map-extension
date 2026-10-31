@@ -34,8 +34,9 @@
   // whole renderer. vite.config.mjs is listed as an entry instead.
   "vite": false,
 
-  // Trunk runs SVGO, so no dependency turns on the plugin that finds
-  // svgo.config.mjs.
+  // svgo.config.mjs comes from the template, and nothing runs it while the
+  // svgo linter of Trunk is disabled; no dependency turns on the plugin that
+  // finds it, so it is turned on here, and the file is not reported unused.
   "svgo": true,
 
   // The build output. The `main` field of package.json makes dist/main.js an

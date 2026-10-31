@@ -32,9 +32,12 @@ Freelens's `pnpm-workspace.yaml` for libraries, the root `package.json` scripts
 of Freelens for tools run with `pnpm dlx` (Biome, knip, Trunk launcher), and
 Freelens's `mise.toml` and `.nvmrc` for Node and the other mise tools.
 Renovate keeps them there: custom datasources in `.renovaterc.json` read the
-versions from the same Freelens files on `main`, so an update arrives only once
-Freelens has adopted it, at that version, in one `Freelens dependencies` group
-PR together with a release of `@freelensapp/extensions`. A dependency added to
+versions from Freelens's `pnpm-workspace.yaml`, `package.json` and `mise.toml`
+on `main`, and `.nvmrc` takes its Node from that `mise.toml` too. An update
+arrives only once Freelens `main` has adopted it, at that version, in the
+`Freelens dependencies` group PR, with or without a Freelens release, so the
+versions here can be ahead of the latest Freelens release. A new release of
+`@freelensapp/extensions` arrives in the same group PR. A dependency added to
 `package.json` follows the Freelens catalog unless the catalog rule excludes
 it; one that Freelens does not have must be excluded there, or its lookup fails
 on the Dependency Dashboard. `react-force-graph-2d`, `d3-force` and
@@ -242,15 +245,26 @@ ingresses, persistent volume claims, config maps and secrets, and the Helm
 releases they belong to. The links are the relations that the objects declare:
 a workload to its pods, a service to the pods its selector matches, an ingress
 to its backend services and its TLS secrets, a pod to the config maps, secrets
-and claims it reads or mounts, and a Helm release, known from the labels and
-annotations that Helm sets and from its release secrets, to its workloads and
-those secrets. The page and the panel draw the objects of the namespaces that
-the filter selects. A details map draws the objects related to its object that
+and claims that its containers' `envFrom` and `env` `secretKeyRef`s name and
+its `configMap`, `secret` and `persistentVolumeClaim` volumes mount, and a Helm
+release, known from the labels and annotations that Helm sets and from its
+release secrets, to its workloads and those secrets. A `configMapKeyRef`, a
+projected volume or an init container gives no link, and in the Service and
+Ingress maps a pod links to no config map, secret or claim. The page and the
+panel draw the objects of the namespaces that the filter selects, a config map
+only when a pod links to it, a TLS secret only when a link reaches it, and a
+service account token secret only when a link other than a `secret` volume
+reaches it. A details map draws the objects related to its object that
 the stores hold in the object's namespace; the stores hold the namespaces of
-the filter. A graph shows a spinner until its stores have loaded, and the page
-and the panel show "No visualizable resources found in this namespace." when
-the stores, config maps aside, loaded no object; the message stays until the
-selection of the filter changes, because the reactions do not clear it.
+the filter. The exception is the Deployment of a pod in the Pod, Service and
+Ingress maps: for a pod that no StatefulSet or DaemonSet owns, it is the first
+Deployment in the store, in any namespace, whose `matchLabels` the pod carries.
+A Deployment's `matchExpressions` are not read, so one that selects with them
+alone matches every such pod. A graph shows a spinner until its stores have
+loaded, and the page and the panel show "No visualizable resources found in
+this namespace." when the stores, config maps aside, loaded no object; the
+message stays until the selection of the filter changes, because the reactions
+do not clear it.
 
 On the page and the panel, `buildNamespaceGraph` of `helpers/namespace-graph.ts`
 builds the nodes and the links from the stores' items, the selected namespaces
@@ -367,7 +381,10 @@ navigates to `/apps/releases/<namespace>/<name>`.
   `src/renderer/components/error-boundary.tsx`, a class component of the host's React with `getDerivedStateFromError`
   and `componentDidCatch`. It logs what its children throw while React renders them with `extension.name` and the
   component stack, and renders `ErrorPage` in their place. A details panel renders again when the host passes a new
-  `object`, which is the boundary's reset key.
+  `object`, which is the boundary's reset key. On the page, `KubeResourcePage` renders its header and graph inside the
+  host's `Renderer.Component.TabLayout`, whose `<main>` has a boundary of its own. What they throw shows the host's
+  "App crash" screen in place of the page's content, and the extension logs nothing; its boundary catches only what is
+  thrown outside that `<main>`.
   - The boundary is applied where the registrations are made: `clusterPages` and `kubeObjectDetailItems` are mapped
     through `withPageErrorBoundary` and `withDetailsErrorBoundary`, each taking `this` and a registration, so an entry
     added to a field is wrapped as well. A `globalPages` field is mapped through `withPageErrorBoundary` too, and a
@@ -386,8 +403,9 @@ navigates to `/apps/releases/<namespace>/<name>`.
   - A `try`/`catch` around the call of a component is not enough. It sees only what the call throws, and the errors
     that matter come later: a child component throws when React renders it, and a callback that the host calls from its
     own render throws there. Such an error goes up to the nearest boundary of the host: the one around the main area of
-    a cluster for a page or a Workloads Overview item, and the one around the whole cluster frame for a details panel,
-    because the host has none around the details drawer.
+    a cluster for a page, the one the Workloads tab layout puts around the Overview, below its tabs, for a Workloads
+    Overview item, and the one around the whole cluster frame for a details panel, because the host has none around the
+    details drawer.
   - A boundary sees only what React itself calls: rendering, constructors and lifecycle methods. An
     `async componentDidMount` turns every error into a rejected promise, which React ignores, and force-graph calls its
     callbacks (`nodeCanvasObject`, `linkColor`, `onNodeClick` and the others) from its animation frame and its event
@@ -457,10 +475,12 @@ mechanism; this is the list to check a change against.
 - **No Node or Electron in renderer and common code.** They are `undefined` in
   the renderer. The build fails on an import, `pnpm type:check` on a global
   ("Process-specific settings").
-- **One CSS asset, `dist/renderer.css`.** Any other name, or a second asset,
-  leaves the extension unstyled. Nothing checks it; look at `dist/` after a
-  change to the CSS setup. The `<style>` tags that force-graph and
-  float-tooltip insert at runtime are not assets of the build ("CSS").
+- **One CSS asset, `dist/renderer.css`.** The host links `renderer.css`, or
+  `style.css` when there is no `renderer.css`, and no other stylesheet: an
+  asset with any other name leaves the extension unstyled, and the rules of a
+  second asset never load. Nothing checks it; look at `dist/` after a change
+  to the CSS setup. The `<style>` tags that force-graph and float-tooltip
+  insert at runtime are not assets of the build ("CSS").
 - **One tsconfig per environment.** Each program has only its runtime's `lib`
   and `types`, and no declaration may load Node into the renderer or the DOM
   into main; otherwise a wrong API type-checks and is `undefined` at runtime.
@@ -469,13 +489,17 @@ mechanism; this is the list to check a change against.
   derivation.** Under mobx-react 10 they are not observable. A `@computed`
   getter, the expression of a `reaction`, or a method the host calls from its
   own derivations that reads them throws
-  `[mobx-react] Cannot read "X.props" in a reactive context`. Thrown while a
-  view renders, the error replaces the view; thrown in a `reaction`, it is
-  logged, and the reaction never runs its effect. The type check, the build
-  and unit tests in a Node environment pass. Read the values in `render()` or
-  in a lifecycle method and hand them on: the details maps follow a new
-  `object` in `componentDidUpdate` for this reason ("MobX 7 and mobx-react 10
-  (standard decorators only)" in Freelens's `migrating-from-v1.md`).
+  `[mobx-react] Cannot read "X.props" in a reactive context` under the
+  development build of mobx-react, which Freelens dev and Vitest run. Thrown
+  while a view renders, the error replaces the view; thrown in a `reaction`,
+  it is logged, and the reaction never runs its effect. The production build,
+  which a packaged Freelens runs, has no such check: nothing throws, and the
+  derivation reads the value without tracking it, so a new prop does not run
+  it again. The type check, the build and unit tests in a Node environment
+  pass. Read the values in `render()` or in a lifecycle method and hand them
+  on: the details maps follow a new `object` in `componentDidUpdate` for this
+  reason ("MobX 7 and mobx-react 10 (standard decorators only)" in Freelens's
+  `migrating-from-v1.md`).
 - **A memo over a store's items is keyed on something that changes with
   them.** The host keeps one observable array per store and updates it in
   place, with `replace` and `splice`, so `store.items` stays the same array
@@ -508,12 +532,13 @@ mechanism; this is the list to check a change against.
 - **Every page, details panel and Workloads Overview item inside an error
   boundary.** A `try`/`catch` around the call of a component catches only what
   the call throws, not what a child throws when React renders it. Such an
-  error replaces the main area with the host's error, also from a Workloads
-  Overview item, or, from a details panel, the whole cluster view with the
-  host's crash page. Map `clusterPages` and `kubeObjectDetailItems` through
-  their wrappers in `error-boundary.tsx`, and render a Workloads Overview item
-  inside an `ErrorBoundary` of its own, as `WorkloadsOverviewItem` does
-  ("Renderer Components").
+  error replaces the main area with the host's error, or, from a Workloads
+  Overview item, the whole Workloads Overview below its tabs, or, from a
+  details panel, the whole cluster view with the host's crash page. Map
+  `clusterPages` and `kubeObjectDetailItems` through their wrappers in
+  `error-boundary.tsx`, and render a Workloads Overview item inside an
+  `ErrorBoundary` of its own, as `WorkloadsOverviewItem` does ("Renderer
+  Components").
 - **A cluster page, or a Workloads Overview item, gets the extension from its
   registration.** The host passes `params` only to a page, and no props to a
   Workloads Overview item. The type check rejects a component that requires
@@ -630,12 +655,13 @@ class is defined, and the production build leaves the field unobservable.
 
 ### CSS
 
-The host links the stylesheet named after the renderer entry, `renderer.css`
-next to `renderer.js`. Library mode extracts the CSS of the whole bundle into
-that one file (`build.lib.cssFileName`). A build that emits more than one CSS
-asset, or a differently named one, leaves the extension unstyled. A component
-imports its CSS module for the class names only and renders no `<style>` tag;
-the rules reach the page through `renderer.css`. CSS modules
+The host links one stylesheet next to the renderer entry: the one named after
+it, `renderer.css` next to `renderer.js`, or `style.css` when there is no
+`renderer.css`. Library mode extracts the CSS of the whole bundle into
+`renderer.css` (`build.lib.cssFileName`). The rules of a second CSS asset never
+load, and a build whose CSS has any other name leaves the extension unstyled.
+A component imports its CSS module for the class names only and renders no
+`<style>` tag; the rules reach the page through `renderer.css`. CSS modules
 use `camelCaseOnly` class names.
 
 The packages `force-graph` and `float-tooltip`, which come with
@@ -780,10 +806,13 @@ The module resolves from every program, so Biome keeps it out of the
 extension's code: `style/noRestrictedImports` rejects an import of `vitest`
 outside `src/**/*.test.*`, `test/` and `integration/`. The same rule rejects
 there the testing helpers of React: the `act` named import of `react`,
-`react-dom/test-utils` and `@testing-library/*`. They type-check, build and
-pass the unit tests, which run the development build of React, but `act`
-delegates to `React.act`, which the production build that Freelens runs leaves
-out, so the call throws only in the host. `globals: true` stays on in
+`react-dom/test-utils` and `@testing-library/*`. They type-check and pass the
+unit tests, which run the development build of React. The renderer build fails
+on `react-dom/test-utils`, a subpath the host does not publish, and on
+`@testing-library/react`, which imports it and `react-dom/client`. It fails on
+`act` with "is not exported by": `vite build` sets `NODE_ENV` to `production`,
+so the build takes the names of `react` from its production build, which
+leaves `act` out. `globals: true` stays on in
 `vitest.config.ts` at runtime only, because React Testing Library registers its
 automatic cleanup only when `afterEach` is a global.
 
@@ -874,21 +903,25 @@ tree they are mostly the props types that the components export, and
 no menu item.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
-Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. Its Vite plugin is off: it adds the renderer entry of
+Vitest alias target `test/freelens-extensions.ts`, the probes in
+`environment-tests/`, and `vite.config.mjs`, which the Vite plugin would
+otherwise find. That plugin is off: it adds the renderer entry of
 `vite.config.mjs` as a development entry, which displaces
 `src/renderer/index.tsx!`, and the production pass then skips the renderer.
 `--no-config-hints` is set because one config serves both passes, and an entry
 that only the production pass needs is reported as redundant by the other.
 
-Two more settings keep the file check to real findings. `project` leaves out
+One more setting keeps the file check to real findings. `project` leaves out
 the CSS module declarations with `!src/**/*.d.scss.ts`: TypeScript reaches them
 through `allowArbitraryExtensions`, while knip resolves
 `import styles from "./x.module.scss"` to the stylesheet, so nothing would
 import them. The negation has no trailing `!`, which would apply it to the
-production pass only. And the SVGO plugin is on (`"svgo": true`), so that
-`svgo.config.mjs`, which no file imports, is an entry rather than an unused
-file: no dependency turns the plugin on.
+production pass only.
+
+`svgo.config.mjs` comes from the template, and nothing runs it: the `svgo`
+linter of `.trunk/trunk.yaml` is disabled. The SVGO plugin of knip is on
+(`"svgo": true`), because no dependency turns it on, so the file is an entry
+and the file check does not report it.
 
 `ignore` leaves out `dist/**`. The `main` field of `package.json` makes
 `dist/main.js` an entry once it exists, and the `knip` script runs with
@@ -1120,7 +1153,7 @@ console.
 
 - **Biome** formats **TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML, Markdown**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width; use `pnpm biome:fix`
 - **Trunk** formats **TOML and shell scripts**, and runs the linters for formats not covered by Biome (yamllint, actionlint, shellcheck); use `pnpm trunk:fix`
-- Import order (enforced by biome organizeImports): built-in modules → `@freelensapp/**` → packages → relative paths
+- Import order (enforced by biome organizeImports): every value import first, in one block: built-in modules → packages → relative paths; then the `import type` lines: built-in modules → `@freelensapp/**` → packages → relative paths, with a blank line before each of the last three groups
 - React 19; JSX compiles to `react/jsx-runtime` imports, which the build maps to the host's React
 - **No emoji** in Markdown files (`.md`), comments, or any source code
 
@@ -1244,11 +1277,12 @@ When reviewing code and proposing fixes:
    - Do **not** use emoji in any Markdown, comments, commit messages, or
      PR descriptions. The only exception is emoji that already appears
      inside code strings (e.g. application logs, user-facing messages).
-   - Use GitHub's `suggestion` block for small targeted fixes so the PR
-     author can accept the change with a single click:
+   - Use GitHub's `suggestion` block for small targeted fixes, in an inline comment on the lines to change, so the PR
+     author can accept the change with a single click. The block holds the new text of those lines, with no diff
+     markers or file headers, because GitHub commits its content in their place:
 
      ```suggestion
-     <same unified-diff format as shown above>
+     const changedLine = "the fix";
      ```
 
    - For larger multi-file changes, use `diff -u` blocks in a regular
