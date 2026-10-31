@@ -1,6 +1,7 @@
 *.d.ts
 *.gz
 *.lock
+!mise.lock
 *.log
 *.map
 *.out
@@ -11,8 +12,8 @@
 
 !custom.d.ts
 !env.d.ts
-!*.css.d.ts
-!*.scss.d.ts
+!*.d.css.ts
+!*.d.scss.ts
 
 /dist/
 
@@ -22,11 +23,28 @@
 
 /coverage/
 /node_modules/
-/out/
+
+# Scratch space of the CI agent, which checks out Freelens at tmp/freelens.
+/tmp/
 
 /.nyc_output/
+
+# Snapshots, screenshots and console logs written by the Playwright MCP server.
+/.playwright-mcp/
 
 *.DS_Store
 /.idea
 /.vscode
-/.vs/
+
+# Credentials and keys. Keep in sync with the Security section of AGENTS.md
+# and the permissions.deny rules in .claude/settings.json.
+.env
+.env.*
+.envrc
+.npmrc
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
