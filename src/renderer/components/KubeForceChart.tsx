@@ -9,12 +9,11 @@ import { buildNamespaceGraph, type NamespaceGraphObjects, sameGraph } from "./he
 import { getMapStores, getNamespaceStore } from "./helpers/stores";
 import { getCanvasColors } from "./helpers/theme-colors";
 import styles from "./KubeForceChart.module.scss";
-import { DefaultTooltip, DeploymentTooltip, PodTooltip, ServiceTooltip, StatefulsetTooltip } from "./tooltips";
+import { MapTooltip } from "./tooltips/map-tooltip";
 
 import type { ChartDataSeries, LinkObject } from "./helpers/types";
 
 export interface KubeForceChartProps {
-  id?: string; // html-id to bind chart
   width?: number;
   height?: number;
 }
@@ -43,10 +42,6 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
   @observable accessor isReady = false;
   @observable accessor noResourcesFound = false;
 
-  static defaultProps: KubeForceChartProps = {
-    id: "kube-resources-map",
-  };
-
   static config = config;
 
   protected links: LinkObject[] = [];
@@ -56,7 +51,7 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
   private chartRef: React.MutableRefObject<ForceGraphMethods<ChartDataSeries, LinkObject> | undefined> = {
     current: undefined,
   };
-  private tooltipRef = React.createRef<HTMLDivElement>();
+  private readonly tooltip = React.createRef<MapTooltip>();
 
   private readonly namespaceStore = getNamespaceStore();
   private readonly stores = getMapStores();
@@ -146,24 +141,11 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
 
   handleNodeHover(node: ChartDataSeries | null) {
     const highlightLinks = new Set<LinkObject>();
-    const elem = this.props.id ? document.getElementById(this.props.id) : null;
-    if (elem) {
-      elem.style.cursor = node ? "pointer" : "";
-    }
     if (node) {
       this.getLinksForNode(node).forEach((link) => highlightLinks.add(link));
     }
     this.setState({ highlightLinks: highlightLinks, hoverNode: node ?? undefined });
   }
-
-  /** Keeps the tooltip next to the pointer, without a render. */
-  handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    const tooltip = this.tooltipRef.current;
-    if (!tooltip) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    tooltip.style.left = `${event.clientX - bounds.left + 12}px`;
-    tooltip.style.top = `${event.clientY - bounds.top + 12}px`;
-  };
 
   generateImages() {
     Object.entries(this.config).forEach(([kind, configItem]) => {
@@ -241,22 +223,6 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
     this.watchDisposers.length = 0;
   }
 
-  renderTooltip(obj: Renderer.K8sApi.KubeObject) {
-    if (obj instanceof Renderer.K8sApi.Pod) {
-      return <PodTooltip obj={obj} />;
-    }
-    if (obj instanceof Renderer.K8sApi.Service) {
-      return <ServiceTooltip obj={obj} />;
-    }
-    if (obj instanceof Renderer.K8sApi.Deployment) {
-      return <DeploymentTooltip obj={obj} />;
-    }
-    if (obj instanceof Renderer.K8sApi.StatefulSet) {
-      return <StatefulsetTooltip obj={obj} />;
-    }
-    return <DefaultTooltip obj={obj} />;
-  }
-
   render() {
     if (!this.isReady) {
       return (
@@ -276,16 +242,14 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
 
     const colors = getCanvasColors();
 
-    const { id, width, height } = this.props;
+    const { width, height } = this.props;
     const { hoverNode } = this.state;
     const sidebarWidth =
       (document.querySelectorAll('[data-testid="cluster-sidebar"]')[0] as HTMLElement | undefined)?.offsetWidth || 200;
 
     return (
-      <div id={id} className={styles.kubeForceChart} onMouseMove={this.handleMouseMove}>
-        <div ref={this.tooltipRef} className={styles.tooltip} style={{ display: hoverNode ? "block" : "none" }}>
-          {hoverNode ? this.renderTooltip(hoverNode.object) : null}
-        </div>
+      <div className={styles.kubeForceChart} onMouseMove={(event) => this.tooltip.current?.follow(event)}>
+        <MapTooltip ref={this.tooltip} object={hoverNode?.object} />
 
         <ForceGraph2D
           graphData={this.state.data}

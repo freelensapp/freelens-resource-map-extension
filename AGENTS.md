@@ -159,7 +159,8 @@ src/
   renderer/components/KubePodChart.tsx            # Its subclass for Pod
   renderer/components/KubeServiceChart.tsx        # Its subclass for Service
   renderer/components/KubeIngressChart.tsx        # Its subclass for Ingress
-  renderer/components/tooltips/                   # The tooltip of a node, per kind
+  renderer/components/tooltips/                   # The tooltip of a node, per kind, and MapTooltip, which shows it
+                                                  # over the graph
   renderer/components/helpers/                    # Color, icon and size per kind; the node and link types; the
                                                   # host's stores, the canvas colors and the object of a Helm
                                                   # release; the builder of the graph of the selected namespaces
@@ -301,8 +302,16 @@ Hovering a node shows a tooltip for its object, made of the host's
 `ServiceTooltip`, `DeploymentTooltip`, `StatefulsetTooltip`, `IngressTooltip`
 (in a details map) and `DefaultTooltip` for every other kind, in
 `src/renderer/components/tooltips/`. A graph renders the tooltip of the
-hovered node in its own React tree, in a `div` next to the pointer, which its
-`onMouseMove` handler moves without a render. force-graph shows its tooltip
+hovered node in its own React tree, in a `div` next to the pointer, which the
+mouse moves over the graph's container place without a render. On the page
+and the panel that `div` is `MapTooltip` of `tooltips/map-tooltip.tsx`, with
+the test id `resource-map-tooltip` and `pointer-events: none`: the container
+hands its mouse moves to `follow`, and `NodeTooltip` picks the tooltip of the
+kind. A details map renders its own `div` the same way. The tooltips take the
+theme's colors: `--textColorSecondary` for their text, `--drawerItemNameColor`
+and `--drawerItemValueColor` for the names and values of a `DrawerItem`, and
+`--tooltipBackground`, `--borderColor` and `--textColorPrimary` for the box of
+`MapTooltip`. force-graph shows its tooltip
 with float-tooltip, which sets a label that is a string as HTML, appends one
 that is an element, and renders a JSX element with its own copy of Preact,
 bundled with it. The host's components run on the host's React, which Preact
@@ -321,7 +330,10 @@ the bundle needs no path to one. The graphs draw the icons on the canvas from
 gives the markup that `Renderer.Component.Icon` takes through its `svg` prop.
 
 A click on a node opens the host's details of its object with
-`Renderer.Navigation.showDetails` and the object's `selfLink`. A Helm release is
+`Renderer.Navigation.showDetails` and the object's `selfLink`. On the page and
+the panel, force-graph sets `.clickable` on the canvas over a node that a click
+opens, and the rule copied from its tag shows the pointer; a details map also
+sets the cursor of its container, which it finds by its id. A Helm release is
 no Kubernetes object: its node holds a `KubeObject` of kind `HelmRelease`,
 built from the release's name and namespace (`createHelmReleaseObject` of
 `helpers/helm.ts` on the page and the panel), and a click on it

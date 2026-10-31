@@ -30,8 +30,17 @@ class KubeObject {
   }
 }
 
+// The models that the tooltip of a node tells apart with `instanceof`.
+class Pod extends KubeObject {}
+
+class Service extends KubeObject {}
+
+class Deployment extends KubeObject {}
+
+class StatefulSet extends KubeObject {}
+
 export const Renderer = {
-  K8sApi: { KubeObject },
+  K8sApi: { KubeObject, Pod, Service, Deployment, StatefulSet },
   // The spinner that a map shows until its stores have loaded.
   Component: { Spinner: () => null },
 };

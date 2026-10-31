@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { compareShallow, observable, reaction, runInAction } from "mobx";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pod } from "../../../test/kube-objects";
@@ -22,14 +22,26 @@ interface FakeStore {
   getChildPods(): Renderer.K8sApi.Pod[];
 }
 
+interface GraphProps {
+  graphData: { nodes: ChartDataSeries[]; links: LinkObject[] };
+  onNodeHover(node: ChartDataSeries | null, previous: ChartDataSeries | null): void;
+}
+
 // jsdom has no canvas: the graph is replaced by a component that keeps the
-// data the map hands to it.
-const graph = vi.hoisted(() => ({ data: undefined as { nodes: ChartDataSeries[]; links: LinkObject[] } | undefined }));
+// props the map hands to it.
+const graph = vi.hoisted(() => ({ props: undefined as GraphProps | undefined }));
 vi.mock("react-force-graph-2d", () => ({
-  default: (props: { graphData: typeof graph.data }) => {
-    graph.data = props.graphData;
+  default: (props: GraphProps) => {
+    graph.props = props;
     return <canvas />;
   },
+}));
+
+// The tooltips of the kinds render the host's components, which a unit test
+// does not have. The stand-ins of the models are no instances of the host's
+// classes, so every node gets the default tooltip.
+vi.mock("./tooltips/DefaultTooltip", () => ({
+  DefaultTooltip: ({ obj }: { obj: KubeObject }) => <p>default {obj.getName()}</p>,
 }));
 
 // The host's stores, as observable arrays, and its namespace store, whose
@@ -79,14 +91,14 @@ beforeEach(() => {
     onContextChange: (callback: (namespaces: string[]) => void, opts: { fireImmediately?: boolean } = {}) =>
       reaction(() => selection.slice(), callback, { fireImmediately: opts.fireImmediately, equals: compareShallow }),
   };
-  graph.data = undefined;
+  graph.props = undefined;
 });
 
 afterEach(() => {
   cleanup();
 });
 
-const drawnIds = () => graph.data?.nodes.map((node) => node.id).sort();
+const drawnIds = () => graph.props?.graphData.nodes.map((node) => node.id).sort();
 
 describe("KubeForceChart", () => {
   it("draws the selected namespaces when a store changes, and nothing of the others", async () => {
@@ -111,5 +123,22 @@ describe("KubeForceChart", () => {
     });
 
     await waitFor(() => expect(drawnIds()).toEqual(["Pod-ledger-1"]));
+  });
+
+  it("shows the tooltip of the hovered node, and hides it when the pointer leaves", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod-web-1"]));
+    const tooltip = screen.getByTestId("resource-map-tooltip");
+    expect(tooltip.style.display).toBe("none");
+
+    act(() => graph.props?.onNodeHover(graph.props.graphData.nodes[0], null));
+
+    expect(tooltip.textContent).toBe("default web-1");
+    expect(tooltip.style.display).toBe("block");
+
+    act(() => graph.props?.onNodeHover(null, null));
+
+    expect(tooltip.style.display).toBe("none");
   });
 });
