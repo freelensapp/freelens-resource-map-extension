@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
 
-import { Common } from "@freelensapp/extensions";
+import { Common, Renderer } from "@freelensapp/extensions";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { compareShallow, observable, reaction, runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pod, secret } from "../../../test/kube-objects";
 import { KubeForceChart } from "./KubeForceChart";
-
-import type { Renderer } from "@freelensapp/extensions";
 
 import type { IObservableArray } from "mobx";
 
@@ -63,6 +61,7 @@ interface GraphProps {
   graphData: { nodes: ChartDataSeries[]; links: LinkObject[] };
   onNodeHover(node: ChartDataSeries | null, previous: ChartDataSeries | null): void;
   onEngineStop(): void;
+  onNodeClick(node: ChartDataSeries, event: MouseEvent): void;
   ref?: { current: unknown };
 }
 
@@ -186,6 +185,19 @@ describe("KubeForceChart", () => {
     act(() => graph.props?.onNodeHover(null, null));
 
     expect(tooltip.style.display).toBe("none");
+  });
+
+  it("opens a Helm release on its route when its node is clicked", async () => {
+    host.stores.secrets.items.replace([
+      secret("sh.helm.release.v1.storefront.v1", "shop", "helm.sh/release.v1", { name: "storefront" }),
+    ]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toContain("HelmRelease-storefront"));
+    const release = graph.props?.graphData.nodes.find((node) => node.kind === "HelmRelease");
+
+    act(() => release && graph.props?.onNodeClick(release, new MouseEvent("click")));
+
+    expect(Renderer.Navigation.navigate).toHaveBeenCalledWith("/helm/releases/shop/storefront");
   });
 
   it("watches each store once under React.StrictMode, and stops every watch when it unmounts", async () => {

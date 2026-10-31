@@ -43,6 +43,8 @@ export const Renderer = {
   K8sApi: { KubeObject, Pod, Service, Deployment, StatefulSet },
   // The spinner that a map shows until its stores have loaded.
   Component: { Spinner: () => null },
+  // Where a click on a node goes.
+  Navigation: { navigate: vi.fn(), showDetails: vi.fn() },
 };
 
 export const Common = {

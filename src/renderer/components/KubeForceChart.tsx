@@ -5,6 +5,7 @@ import { observer } from "mobx-react";
 import React from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { config } from "./helpers/config";
+import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { buildNamespaceGraph, type NamespaceGraphObjects, sameGraph } from "./helpers/namespace-graph";
 import { canListMapStore, getMapStores, getNamespaceStore, type MapStores } from "./helpers/stores";
 import { getCanvasColors } from "./helpers/theme-colors";
@@ -379,9 +380,8 @@ export class KubeForceChart extends React.Component<KubeForceChartProps, State> 
           }}
           onNodeClick={(node) => {
             if (node.object) {
-              if (node.object.kind == "HelmRelease") {
-                const path = `/apps/releases/${node.object.getNs()}/${node.object.getName()}?`;
-                Renderer.Navigation.navigate(path);
+              if (node.object.kind === helmReleaseKind) {
+                Renderer.Navigation.navigate(getHelmReleasePath(node.object));
               } else {
                 Renderer.Navigation.showDetails(node.object.selfLink);
               }

@@ -23,6 +23,12 @@ export function getHelmReleaseName(object: KubeObject): string | undefined {
   return undefined;
 }
 
+/** The route of Freelens where the details of a Helm release open. */
+export function getHelmReleasePath(release: KubeObject): string {
+  const namespace = encodeURIComponent(release.getNs() ?? "");
+  return `/helm/releases/${namespace}/${encodeURIComponent(release.getName())}`;
+}
+
 /**
  * An object that stands for a Helm release, which has no object of its own in
  * the cluster. Its `uid` is empty, so nothing may be keyed on its `getId()`.

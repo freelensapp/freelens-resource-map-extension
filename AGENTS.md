@@ -369,8 +369,11 @@ opens, and the rule copied from its tag shows the pointer; a details map also
 sets the cursor of its container, which it finds by its id. A Helm release is
 no Kubernetes object: its node holds a `KubeObject` of kind `HelmRelease`,
 built from the release's name and namespace (`createHelmReleaseObject` of
-`helpers/helm.ts` on the page and the panel), and a click on it
-navigates to `/apps/releases/<namespace>/<name>`.
+`helpers/helm.ts` on the page and the panel). On the page and the panel, a
+click on it navigates to `/helm/releases/<namespace>/<name>`
+(`getHelmReleasePath`), the route of Freelens where the release opens; a
+details map navigates to `/apps/releases/<namespace>/<name>`, which no route of
+Freelens 2.0.0 answers.
 
 ## Renderer Components
 
