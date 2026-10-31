@@ -345,8 +345,9 @@ the host in `componentDidUpdate`.
 
 Hovering a node shows a tooltip for its object, made of the host's
 `DrawerItem`, `Badge`, `StatusBrick` and `Table`: `PodTooltip`,
-`ServiceTooltip`, `DeploymentTooltip`, `StatefulsetTooltip`, `IngressTooltip`
-(in a details map) and `DefaultTooltip` for every other kind, in
+`ServiceTooltip`, `DeploymentTooltip`, `StatefulsetTooltip`, `IngressTooltip`,
+with the hosts and paths of its rules, and `DefaultTooltip` for every other
+kind, in
 `src/renderer/components/tooltips/`. A graph renders the tooltip of the
 hovered node in its own React tree, in a `div` next to the pointer, which the
 mouse moves over the graph's container place without a render. On the page

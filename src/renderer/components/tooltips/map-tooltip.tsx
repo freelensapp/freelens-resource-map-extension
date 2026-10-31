@@ -2,6 +2,7 @@ import { Renderer } from "@freelensapp/extensions";
 import React from "react";
 import { DefaultTooltip } from "./DefaultTooltip";
 import { DeploymentTooltip } from "./DeploymentTooltip";
+import { IngressTooltip } from "./IngressTooltip";
 import styles from "./map-tooltip.module.scss";
 import { PodTooltip } from "./PodTooltip";
 import { ServiceTooltip } from "./ServiceTooltip";
@@ -27,6 +28,9 @@ export function NodeTooltip({ object }: NodeTooltipProps) {
   }
   if (object instanceof K8sApi.StatefulSet) {
     return <StatefulsetTooltip obj={object} />;
+  }
+  if (object instanceof K8sApi.Ingress) {
+    return <IngressTooltip obj={object} />;
   }
   return <DefaultTooltip obj={object} />;
 }

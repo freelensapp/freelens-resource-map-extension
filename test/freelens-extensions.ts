@@ -39,8 +39,10 @@ class Deployment extends KubeObject {}
 
 class StatefulSet extends KubeObject {}
 
+class Ingress extends KubeObject {}
+
 export const Renderer = {
-  K8sApi: { KubeObject, Pod, Service, Deployment, StatefulSet },
+  K8sApi: { KubeObject, Pod, Service, Deployment, StatefulSet, Ingress },
   // The spinner that a map shows until its stores have loaded.
   Component: { Spinner: () => null },
   // Where a click on a node goes.

@@ -20,6 +20,13 @@ vi.mock("./DeploymentTooltip", () => ({
 vi.mock("./StatefulsetTooltip", () => ({
   StatefulsetTooltip: ({ obj }: { obj: KubeObject }) => <p>stateful set {obj.getName()}</p>,
 }));
+vi.mock("./IngressTooltip", () => ({
+  IngressTooltip: ({ obj }: { obj: Renderer.K8sApi.Ingress }) => (
+    <p>
+      ingress {obj.getName()} for {obj.spec.rules?.map((rule) => rule.host).join(", ")}
+    </p>
+  ),
+}));
 vi.mock("./DefaultTooltip", () => ({
   DefaultTooltip: ({ obj }: { obj: KubeObject }) => <p>default {obj.getName()}</p>,
 }));
@@ -33,28 +40,38 @@ afterEach(() => {
 
 describe("MapTooltip", () => {
   it.each([
-    ["Pod", new Renderer.K8sApi.Pod({ apiVersion: "v1", kind: "Pod", metadata: metadata("web-1") }), "pod web-1"],
+    ["a Pod", new Renderer.K8sApi.Pod({ apiVersion: "v1", kind: "Pod", metadata: metadata("web-1") }), "pod web-1"],
     [
-      "Service",
+      "a Service",
       new Renderer.K8sApi.Service({ apiVersion: "v1", kind: "Service", metadata: metadata("web") }),
       "service web",
     ],
     [
-      "Deployment",
+      "a Deployment",
       new Renderer.K8sApi.Deployment({ apiVersion: "apps/v1", kind: "Deployment", metadata: metadata("web") }),
       "deployment web",
     ],
     [
-      "StatefulSet",
+      "a StatefulSet",
       new Renderer.K8sApi.StatefulSet({ apiVersion: "apps/v1", kind: "StatefulSet", metadata: metadata("db") }),
       "stateful set db",
     ],
     [
-      "ConfigMap",
+      "an Ingress",
+      new Renderer.K8sApi.Ingress({
+        apiVersion: "networking.k8s.io/v1",
+        kind: "Ingress",
+        metadata: metadata("storefront"),
+        spec: { tls: [], rules: [{ host: "shop.example.com" }, { host: "www.example.com" }] },
+      }),
+      "ingress storefront for shop.example.com, www.example.com",
+    ],
+    [
+      "a ConfigMap",
       new Renderer.K8sApi.KubeObject({ apiVersion: "v1", kind: "ConfigMap", metadata: metadata("web-config") }),
       "default web-config",
     ],
-  ])("shows the tooltip of a %s", (_kind, object, text) => {
+  ])("shows the tooltip of %s", (_kind, object, text) => {
     render(<MapTooltip object={object} />);
 
     const tooltip = screen.getByTestId("resource-map-tooltip");
