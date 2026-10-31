@@ -160,7 +160,9 @@ src/
   renderer/components/KubeServiceChart.tsx        # Its subclass for Service
   renderer/components/KubeIngressChart.tsx        # Its subclass for Ingress
   renderer/components/tooltips/                   # The tooltip of a node, per kind
-  renderer/components/helpers/                    # Color, icon and size per kind; the node and link types
+  renderer/components/helpers/                    # Color, icon and size per kind; the node and link types; the
+                                                  # host's stores, the canvas colors and the object of a Helm
+                                                  # release; the builder of the graph of the selected namespaces
   renderer/components/workloads-overview-item.tsx # The Workloads Overview panel inside its error boundary
   renderer/components/error-boundary.tsx          # ErrorBoundary and its registration wrappers
   renderer/components/error-page.tsx              # ErrorPage, which the boundary renders
@@ -225,10 +227,12 @@ of its kind on it, and its name below. A pod takes the color of its status. A
 workload on the page and in the panel, and the shown object in a details map,
 get an outer ring. The fill of the ring and the color of the names come from
 the active theme (`Renderer.Theme.activeTheme`), which the graphs read while
-they render. A link takes the color of its source, and the links of the node
-under the pointer are drawn thicker. `src/renderer/components/helpers/config.ts`
-has the color, icon and size of every kind, and `helpers/types.ts` the node and
-link types, built on those of `react-force-graph-2d`.
+they render; `KubeForceChart` reads them with `getCanvasColors()` of
+`helpers/theme-colors.ts`. A link takes the color of its source, and the links
+of the node under the pointer are drawn thicker.
+`src/renderer/components/helpers/config.ts` has the color, icon and size of
+every kind, and `helpers/types.ts` the node and link types, built on those of
+`react-force-graph-2d`.
 
 The nodes are the pods, deployments, stateful sets, daemon sets, services,
 ingresses, persistent volume claims, config maps and secrets, and the Helm
@@ -245,24 +249,45 @@ and the panel show "No visualizable resources found in this namespace." when
 the stores, config maps aside, loaded no object; the message stays until the
 selection of the filter changes, because the reactions do not clear it.
 
+On the page and the panel, `buildNamespaceGraph` of `helpers/namespace-graph.ts`
+builds the nodes and the links from the stores' items, the selected namespaces
+and the previous graph; it reads no store and starts no reaction. It reuses
+the objects of the previous graph: a node whose id it builds again is the same
+node object, with its object and color refreshed, and so is a link whose ends
+it builds again. force-graph keeps the position of a node, and the picking
+color of a node or a link, on the object itself, and its color registry frees
+nothing, so new copies of the same nodes and links would fill it up. A change
+in a store builds the graph again from the previous one, and a node that
+nothing references any more leaves it, such as a config map that no pod reads.
+`KubeForceChart` gives the graph new data, which starts the simulation again,
+only when the nodes or the links change by id (`sameGraph`); otherwise the
+canvas, which force-graph draws on every frame (`autoPauseRedraw={false}`),
+shows the refreshed nodes where they are. A load of the stores, when the graph
+mounts and when the selection changes, starts from no previous graph. A
+details map adds and removes its nodes itself.
+
 ### Data
 
 The graphs read the host's stores and nothing else: `Renderer.K8sApi.podsStore`,
 `deploymentStore`, `statefulSetStore`, `daemonSetStore`, `serviceStore`,
 `ingressStore`, `pvcStore`, `configMapStore` and `secretsStore`, and
-`namespaceStore` for the namespaces that the filter selects. They are the
-host's singletons, shared with its own pages: a store that another view has
-loaded is there already, and what the map loads is what the host's lists show.
-Every request is a list or a watch of one of these stores, sent by the host.
+`namespaceStore` for the namespaces that the filter selects; `KubeForceChart`
+takes them from `getMapStores()` and `getNamespaceStore()` of
+`helpers/stores.ts`. They are the host's singletons, shared with its own
+pages: a store that another view has loaded is there already, and what the
+map loads is what the host's lists show. Every request is a list or a watch
+of one of these stores, sent by the host.
 
 A graph loads its stores in `componentDidMount`, one after the other:
 `loadAll()`, for the namespaces of the filter, then `subscribe()`, which starts
 the store's watch and returns the function that stops it. The graph calls
 those functions before it loads again and in `componentWillUnmount`. A
 `reaction` per store, on `store.items.toJSON()` compared with
-`compareStructural`, removes the nodes of deleted objects and adds the new
-ones; `toJSON()` reads every item and returns a new array, so the reaction
-sees the objects that the host replaces in place ("Rules That Fail Silently").
+`compareStructural`, follows the changes: the page and the panel build their
+graph again, and a details map removes the nodes of deleted objects and adds
+the new ones; `toJSON()` reads every item and returns a new array, so the
+reaction sees the objects that the host replaces in place ("Rules That Fail
+Silently").
 The page and the panel load all nine stores, and load them again when the
 selection of the filter changes (`namespaceStore.onContextChange`). A details
 map loads only the stores that have not loaded yet (`isLoaded`), reacts to the
@@ -297,8 +322,9 @@ gives the markup that `Renderer.Component.Icon` takes through its `svg` prop.
 
 A click on a node opens the host's details of its object with
 `Renderer.Navigation.showDetails` and the object's `selfLink`. A Helm release is
-no Kubernetes object: its node holds a `KubeObject` of kind `HelmRelease` that
-the graph builds from the release's name and namespace, and a click on it
+no Kubernetes object: its node holds a `KubeObject` of kind `HelmRelease`,
+built from the release's name and namespace (`createHelmReleaseObject` of
+`helpers/helm.ts` on the page and the panel), and a click on it
 navigates to `/apps/releases/<namespace>/<name>`.
 
 ## Renderer Components
@@ -340,11 +366,12 @@ navigates to `/apps/releases/<namespace>/<name>`.
     observers of their own.
 - Components import their CSS module for the class names only, with no `?inline` import and no `<style>` tag; the rules
   reach the page through `renderer.css` (see "CSS"). `:global(...)` names the classes a module does not own: the host's
-  (`.DrawerItem`, `.Badge`, `.StatusBrick`, `.Table`), the canvas container of force-graph (`.force-graph-container`),
-  and the plain names that the tooltips give the host's components or take from an object, such as `conditions` or the
-  status of a pod. Layout is written in the modules' own rules: the host's stylesheets define no utility classes for
-  it, so a class such as `flex` or `gaps` matches nothing. The graph's module, `KubeForceChart.module.scss`, serves
-  both graphs. SCSS variables are in `src/renderer/vars.scss`, used with `@use "../vars"`.
+  (`.DrawerItem`, `.Badge`, `.StatusBrick`, `.Table`), the canvas container of force-graph (`.force-graph-container`)
+  and the cursor classes it sets on the canvas (`.clickable`, `.grabbable`), and the plain names that the tooltips give
+  the host's components or take from an object, such as `conditions` or the status of a pod. Layout is written in the
+  modules' own rules: the host's stylesheets define no utility classes for it, so a class such as `flex` or `gaps`
+  matches nothing. The graph's module, `KubeForceChart.module.scss`, serves both graphs. SCSS variables are in
+  `src/renderer/vars.scss`, used with `@use "../vars"`.
 - SCSS modules get TypeScript declarations (`*.module.d.scss.ts`), written during the renderer build (see
   "CSS module declarations"). They are committed, because `pnpm type:check` and `type-check.yaml` run without a build;
   commit the regenerated file with a change to its SCSS module. `pnpm clean:dts` removes them.
@@ -429,6 +456,14 @@ mechanism; this is the list to check a change against.
   and a reaction an expression that reads every item, as
   `store.items.toJSON()` does ("Data"). It shows only on a cluster whose
   objects change while the view is open.
+- **A reaction started inside another reaction runs later.** Inside the effect
+  of a reaction, or in an action, MobX runs a new reaction, its first run with
+  `fireImmediately` included, only when the outer one ends. A value that its
+  callback sets is not there on the next line, and code that reads it there
+  works on what it was before: `namespaceStore.onContextChange` called from a
+  store's reaction gives no selection until that reaction ends. Do the work in
+  the callback, or read the value outside such a reaction. The type check, the
+  build and a test that calls the code outside a reaction pass.
 - **An effect creates what its cleanup aborts or releases.** Freelens dev
   renders in `React.StrictMode`, which runs an effect, cleans it up and runs
   it again on the same instance; a class component gets `componentDidMount`,
@@ -577,7 +612,11 @@ The packages `force-graph` and `float-tooltip`, which come with
 evaluated, with the rules of the graph's canvas and of force-graph's tooltip.
 They are third-party code and stay as they are: they add no CSS asset, and the
 build emits `renderer.css` alone. The extension's own rules go into its CSS
-modules.
+modules. The rules of force-graph's tag, all under its container (the
+canvas's `display`, `user-select`, `outline` and tap highlight, and the
+cursors of `.clickable` and `.grabbable`), are copied into
+`KubeForceChart.module.scss`, so that the look of the graph does not depend on
+the tag.
 
 ### CSS module declarations
 

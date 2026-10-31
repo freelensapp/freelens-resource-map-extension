@@ -11,7 +11,30 @@
 // as your tests need more of the host API.
 import { vi } from "vitest";
 
-export const Renderer = {};
+// The host's `KubeObject`, as far as the maps build one: the node of a Helm
+// release stands on an object made with it.
+class KubeObject {
+  declare kind: string;
+  declare metadata: { name: string; namespace?: string };
+
+  constructor(data: object) {
+    Object.assign(this, data);
+  }
+
+  getName() {
+    return this.metadata.name;
+  }
+
+  getNs() {
+    return this.metadata.namespace;
+  }
+}
+
+export const Renderer = {
+  K8sApi: { KubeObject },
+  // The spinner that a map shows until its stores have loaded.
+  Component: { Spinner: () => null },
+};
 
 export const Common = {
   logger: {

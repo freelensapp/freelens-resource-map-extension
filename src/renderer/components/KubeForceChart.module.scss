@@ -3,9 +3,29 @@
   width: 100%;
   height: 100%;
 
-  // the canvas container of force-graph, a third-party class
+  // the canvas container of force-graph, a third-party class, with the rules
+  // of the stylesheet that force-graph adds to the document
   :global(.force-graph-container) {
     background-color: var(--secondaryBackground);
+
+    canvas {
+      display: block;
+      user-select: none;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :global(.clickable) {
+      cursor: pointer;
+    }
+
+    :global(.grabbable) {
+      cursor: grab;
+
+      &:active {
+        cursor: grabbing;
+      }
+    }
   }
 }
 
