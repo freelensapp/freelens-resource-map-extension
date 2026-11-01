@@ -313,9 +313,11 @@ container with `data-settled` and fills a visually hidden list,
 with an item per node: its kind, namespace and name in `data-kind`,
 `data-namespace` and `data-name`, and its point on the canvas, from
 `graph2ScreenCoords` (`nodePointsOf` of `helpers/graph-methods.ts`), in
-`data-x` and `data-y`. New data clears both. They are for assistive technology
-and the integration tests, which find a node on the screen at its point plus the
-position of the canvas.
+`data-x` and `data-y`. New data clears both. A resize of the container takes
+the points again (`componentDidUpdate`): force-graph keeps the center of its
+view when its canvas changes size, so every node moves on the screen. They are
+for assistive technology and the integration tests, which find a node on the
+screen at its point plus the position of the canvas.
 
 ### Data
 

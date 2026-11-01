@@ -82,6 +82,8 @@ export class KubeForceChart extends React.Component<object, State> {
   private watchDisposers: (() => void)[] = [];
   private disposers: (() => void)[] = [];
   private settleTimer?: ReturnType<typeof setTimeout>;
+  // The size of the canvas when the points of the hidden list were taken.
+  private pointsSize = { width: 0, height: 0 };
 
   state: Readonly<State> = {
     data: {
@@ -126,6 +128,12 @@ export class KubeForceChart extends React.Component<object, State> {
       ),
     );
     void this.load();
+  }
+
+  // force-graph keeps the center of its view when its canvas changes size, so
+  // every node moves on the screen: a settled map takes their points again.
+  componentDidUpdate() {
+    this.followResize();
   }
 
   componentWillUnmount() {
@@ -225,10 +233,18 @@ export class KubeForceChart extends React.Component<object, State> {
   // The graph reached its first zoom and stopped: the points of its nodes, for
   // the hidden list, and the data-settled mark.
   private settle() {
+    this.pointsSize = { width: this.size.width, height: this.size.height };
     runInAction(() => {
       this.nodePoints = nodePointsOf(this.chart, this.nodes);
       this.settled = true;
     });
+  }
+
+  private followResize() {
+    const { width, height } = this.size;
+    if (this.settled && (width !== this.pointsSize.width || height !== this.pointsSize.height)) {
+      this.settle();
+    }
   }
 
   private unsettle() {

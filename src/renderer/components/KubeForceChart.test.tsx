@@ -402,4 +402,20 @@ describe("KubeForceChart", () => {
     expect(map()).toBeNull();
     expect(screen.getByTestId("resource-map-nodes").children).toHaveLength(0);
   });
+
+  it("takes the points of its nodes again when its container resizes, as the graph keeps the center of its view", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    act(() => FakeResizeObserver.last?.resize(800, 600));
+    act(() => graph.props?.onEngineStop());
+    const item = () => screen.getByTestId("resource-map-nodes").querySelector("li");
+    expect(item()?.dataset).toMatchObject({ x: "400", y: "300" });
+
+    // On a canvas 200 px narrower and 100 px lower, the center of the view moves 100 px left and 50 px up.
+    graph.methods.graph2ScreenCoords = vi.fn((x: number, y: number) => ({ x: x + 300, y: y + 250 }));
+    act(() => FakeResizeObserver.last?.resize(600, 500));
+
+    expect(item()?.dataset).toMatchObject({ x: "300", y: "250" });
+  });
 });

@@ -135,6 +135,8 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   private watchDisposers: (() => void)[] = [];
   private disposers: (() => void)[] = [];
   private settleTimer?: ReturnType<typeof setTimeout>;
+  // The size of the canvas when the points of the hidden list were taken.
+  private pointsSize = { width: 0, height: 0 };
 
   state: Readonly<State> = {
     data: {
@@ -174,6 +176,9 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
 
   // mobx-react 10 does not let a reaction read this.props, so a new object of the host is handled here
   componentDidUpdate(prevProps: KubeResourceChartProps<K>) {
+    // force-graph keeps the center of its view when its canvas changes size,
+    // so every node moves on the screen: a settled map takes their points again.
+    this.followResize();
     if (prevProps.object === this.props.object) return;
     // A new object lists its namespace again, when the stores do not load it,
     // and the map is built again once the list is back.
@@ -335,10 +340,18 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   // The graph reached its first zoom and stopped: the points of its nodes, for
   // the hidden list, and the data-settled mark.
   private settle() {
+    this.pointsSize = { width: this.size.width, height: this.size.height };
     runInAction(() => {
       this.nodePoints = nodePointsOf(this.chart, this.nodes);
       this.settled = true;
     });
+  }
+
+  private followResize() {
+    const { width, height } = this.size;
+    if (this.settled && (width !== this.pointsSize.width || height !== this.pointsSize.height)) {
+      this.settle();
+    }
   }
 
   private unsettle() {

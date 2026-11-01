@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { Common } from "@freelensapp/extensions";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { observable } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,13 +100,22 @@ function fakeApi(kind: string): FakeApi {
 
 interface GraphProps {
   graphData: { nodes: ChartDataSeries[]; links: LinkObject[] };
+  onEngineStop(): void;
+  ref?: { current: unknown };
 }
 
-// jsdom has no canvas: the graph keeps the props the map hands to it.
-const graph = vi.hoisted(() => ({ props: undefined as GraphProps | undefined }));
+// jsdom has no canvas: the graph keeps the props the map hands to it, and puts
+// methods that record their calls in its ref, as the graph does when it mounts.
+const graph = vi.hoisted(() => ({
+  props: undefined as GraphProps | undefined,
+  methods: {} as Record<string, (...args: never[]) => unknown>,
+}));
 vi.mock("react-force-graph-2d", () => ({
   default: (props: GraphProps) => {
     graph.props = props;
+    if (props.ref && props.ref.current !== graph.methods) {
+      props.ref.current = graph.methods;
+    }
     return <canvas />;
   },
 }));
@@ -154,7 +163,14 @@ beforeEach(() => {
   host.stores = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeStore(kind)]));
   host.apis = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeApi(kind)]));
   host.selected = [];
+  const force = { strength: vi.fn(() => force), distance: vi.fn(() => force) };
   graph.props = undefined;
+  graph.methods = {
+    zoom: vi.fn(),
+    zoomToFit: vi.fn(),
+    d3Force: vi.fn(() => force),
+    graph2ScreenCoords: vi.fn((x: number, y: number) => ({ x: x + 400, y: y + 200 })),
+  };
 });
 
 afterEach(() => {
@@ -242,6 +258,35 @@ describe("KubeResourceChart", () => {
       "[@freelensapp/resource-map-extension]: cannot list the ConfigMap objects",
       new Error("Failed to load api/v1/configmaps"),
     );
+  });
+
+  it("takes the points of its nodes again when its container resizes, as the graph keeps the center of its view", async () => {
+    let resize = (_width: number, _height: number) => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resize = (width, height) =>
+            callback([{ contentRect: { width, height } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const web1 = pod("web-1", "shop");
+    host.stores.pods.items.replace([web1]);
+    render(<KubePodChart object={web1} />);
+    await waitFor(() => expect(graph.props?.graphData.nodes.map((node) => node.id)).toEqual(["Pod/shop/web-1"]));
+    act(() => resize(800, 400));
+    act(() => graph.props?.onEngineStop());
+    const item = () => screen.getByTestId("resource-map-nodes").querySelector("li");
+    expect(item()?.dataset).toMatchObject({ x: "400", y: "200" });
+
+    // On a canvas 200 px narrower, the center of the view moves 100 px left.
+    graph.methods.graph2ScreenCoords = vi.fn((x: number, y: number) => ({ x: x + 300, y: y + 200 }));
+    act(() => resize(600, 400));
+
+    expect(item()?.dataset).toMatchObject({ x: "300", y: "200" });
   });
 
   it("builds the map again for a new instance of its object", async () => {
