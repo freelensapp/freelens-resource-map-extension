@@ -387,8 +387,18 @@ keeps what its store holds. With listed pods, the map finds the pods of a
 workload among its pods as the host's stores find them among theirs
 (`childPodsOf` of `helpers/details-graph.ts`): by the labels of the pod
 template for a Deployment, and by owner for a StatefulSet or a DaemonSet. No
-watch follows the listed objects; a new `object` from the host lists the
-namespace again, and the map is built again when the list is back.
+watch of the map's own follows the listed objects. It lists the namespace again
+when the host passes a new `object`, and, at most once a second
+(`relistOnChange`), when the items of a store that it follows, the pods or the
+store of its object's kind, have changed there since the last list started:
+that store is watched there, by a view of the host or by the map's own
+subscription, as the pods store is once the Nodes page or the details of a
+node have loaded every namespace, and the listed objects would hide its
+changes. The map is built again when the list is back. It decides whether to
+list the first time it looks at the namespace of its object, and keeps to it: it
+loaded its stores for the selection of that moment and does not follow the
+selection, so a filter that comes to select the namespace does not make it
+drop the list.
 
 ### Tooltips, icons and clicks
 

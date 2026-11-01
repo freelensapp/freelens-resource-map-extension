@@ -77,6 +77,10 @@ function withListed<T extends KubeObject>(
   return [...held.filter((object) => object.getNs() !== namespace), ...listed];
 }
 
+// How long a map waits before it lists its namespace again after a change of
+// a followed store there, and so how often it lists it at most.
+const relistInterval = 1000;
+
 // The store of the kind of the object of a panel: its changes, with those of
 // the pods, build the map again.
 const storeOfKind: Partial<Record<string, keyof MapStores>> = {
@@ -132,6 +136,17 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   private listing?: AbortController;
   // The objects of the namespace of the object, listed when the stores do not load it.
   private listed?: { namespace: string; objects: MapObjects };
+  // Whether the map lists the namespace of its object, decided the first time
+  // it looks at it: it loads its stores for the selection of that moment, and
+  // does not follow the selection.
+  private listsNamespace?: { namespace: string; lists: boolean };
+  // The stores whose changes build the map again: the pods and the store of
+  // the kind of its object.
+  private followed: (keyof MapStores)[] = [];
+  // The items of each followed store in the listed namespace when the last
+  // list of it started, which tell a change of the store there.
+  private readonly listedItems = new Map<keyof MapStores, string>();
+  private relistTimer?: ReturnType<typeof setTimeout>;
   private watchDisposers: (() => void)[] = [];
   private disposers: (() => void)[] = [];
   private settleTimer?: ReturnType<typeof setTimeout>;
@@ -159,17 +174,19 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
     const followed = new Set<keyof MapStores>(["pods"]);
     const own = storeOfKind[this.props.object.kind];
     if (own) followed.add(own);
+    this.followed = [...followed].filter((key) => this.listable.has(key));
 
     this.disposers.push(
-      ...[...followed]
-        .filter((key) => this.listable.has(key))
-        .map((key) =>
-          reaction(
-            () => this.stores[key].items.toJSON(),
-            () => this.refreshChart(),
-            { equals: compareStructural },
-          ),
+      ...this.followed.map((key) =>
+        reaction(
+          () => this.stores[key].items.toJSON(),
+          () => {
+            this.relistOnChange(key);
+            this.refreshChart();
+          },
+          { equals: compareStructural },
         ),
+      ),
     );
     void this.load();
   }
@@ -195,7 +212,10 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
 
   componentWillUnmount() {
     this.stopLoading();
+    clearTimeout(this.relistTimer);
+    this.relistTimer = undefined;
     this.listed = undefined;
+    this.listsNamespace = undefined;
     this.disposers.forEach((disposer) => disposer());
     this.disposers.length = 0;
     clearTimeout(this.settleTimer);
@@ -251,25 +271,59 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
    * load it: the filter selects other namespaces, and the panel shows an
    * object opened from elsewhere, such as a pod from the details of its node.
    * The objects are the map's own: the stores keep the namespaces of the
-   * filter, as the host's views expect them, and no watch follows the listed
-   * objects. Resolves to whether it listed them, and no newer listing, nor
-   * the unmount, aborted it.
+   * filter, as the host's views expect them, and no watch of the map's own
+   * follows the listed objects. The choice is made the first time, and kept:
+   * the map loaded its stores for the selection of then. Resolves to whether
+   * it listed them, and no newer listing, nor the unmount, aborted it.
    */
   private async listNamespace(): Promise<boolean> {
     this.listing?.abort();
     this.listing = undefined;
     const namespace = this.props.object.getNs();
-    if (!namespace || storesLoad(namespace)) {
+    if (namespace && this.listsNamespace?.namespace !== namespace) {
+      this.listsNamespace = { namespace, lists: !storesLoad(namespace) };
+    }
+    if (!namespace || !this.listsNamespace?.lists) {
       this.listed = undefined;
       return false;
     }
     const controller = new AbortController();
     this.listing = controller;
+    for (const key of this.followed) this.listedItems.set(key, this.itemsKey(key, namespace));
     const objects = await this.listObjects(namespace, controller.signal);
     if (controller.signal.aborted) return false;
     this.listing = undefined;
     this.listed = { namespace, objects };
+    for (const key of this.followed) this.relistOnChange(key);
     return true;
+  }
+
+  /**
+   * Lists the namespace again, at most once a second, when a followed store
+   * has changed there since the last list of it started. The store is then
+   * watched there, by a view of the host or by the map's own subscription:
+   * after the Nodes page, or the details of a node, the pods store loads and
+   * watches every namespace. The listed objects would otherwise hide its
+   * changes, such as a pod that a rollout replaces.
+   */
+  private relistOnChange(key: keyof MapStores) {
+    const { listed } = this;
+    if (!listed || this.relistTimer || this.itemsKey(key, listed.namespace) === this.listedItems.get(key)) return;
+    this.relistTimer = setTimeout(() => {
+      this.relistTimer = undefined;
+      void this.listNamespace().then((done) => {
+        if (done && this.isReady) this.refreshChart();
+      });
+    }, relistInterval);
+  }
+
+  // The uid and resourceVersion of every item of a store in a namespace.
+  private itemsKey(key: keyof MapStores, namespace: string) {
+    return (this.itemsOf(key) as readonly KubeObject[])
+      .filter((object) => object.getNs() === namespace)
+      .map((object) => `${object.getId()}@${object.metadata.resourceVersion ?? ""}`)
+      .sort()
+      .join(",");
   }
 
   // The objects of every kind that the user may list, in one namespace, with

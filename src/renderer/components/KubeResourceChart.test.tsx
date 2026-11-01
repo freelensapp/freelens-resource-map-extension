@@ -408,6 +408,45 @@ describe("KubeResourceChart", () => {
       );
     });
 
+    it("lists the namespace again, once, when a store that it follows changes there, and draws the change", async () => {
+      // After the Nodes page, the pods store holds and watches the pods of every namespace.
+      const stockPod = (name: string) => pod(name, "inventory", { labels: { app: "stock" } });
+      host.stores.deployments.items.replace([stock()]);
+      host.stores.pods.items.replace([stockPod("stock-1")]);
+      render(<KubeControllerChart object={stock()} />);
+      await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+
+      // A rollout replaces the pod, which the store follows, and so does the list.
+      host.apis.pods.objects = [stockPod("stock-2")];
+      host.stores.pods.items.replace([stockPod("stock-2")]);
+      host.stores.pods.items.replace([stockPod("stock-2"), stockPod("stock-3")]);
+      host.apis.pods.objects.push(stockPod("stock-3"));
+
+      await waitFor(
+        () =>
+          expect(linkIds()).toEqual([
+            "Deployment/inventory/stock -> Pod/inventory/stock-2",
+            "Deployment/inventory/stock -> Pod/inventory/stock-3",
+            "Pod/inventory/stock-2 -> Service/inventory/stock",
+            "Pod/inventory/stock-3 -> Service/inventory/stock",
+          ]),
+        { timeout: 3000 },
+      );
+      expect(host.apis.pods.lists).toEqual(["inventory", "inventory"]);
+    });
+
+    it("keeps listing the namespace for a new instance of its object once the filter selects it", async () => {
+      const { rerender } = render(<KubeControllerChart object={stock()} />);
+      await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+
+      // The map loaded its stores for shop alone, and does not follow the selection.
+      host.selected = ["shop", "inventory"];
+      rerender(<KubeControllerChart object={stock()} />);
+
+      await waitFor(() => expect(host.apis.services.lists).toEqual(["inventory", "inventory"]));
+      await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+    });
+
     it("aborts a list that has not come back when it unmounts, and logs nothing", async () => {
       const { pods } = host.apis;
       pods.list = (options) => {
