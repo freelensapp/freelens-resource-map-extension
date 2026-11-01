@@ -2,10 +2,10 @@
 
 import { Common } from "@freelensapp/extensions";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { observable } from "mobx";
+import { getObserverTree, observable, runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deployment, kubeObject, pod } from "../../../test/kube-objects";
+import { deployment, kubeObject, pod, secret } from "../../../test/kube-objects";
 import { KubeControllerChart } from "./KubeControllerChart";
 import { KubePodChart } from "./KubePodChart";
 import { KubeServiceChart } from "./KubeServiceChart";
@@ -125,6 +125,8 @@ const host = vi.hoisted(() => ({
   apis: {} as Record<string, FakeApi>,
   // The namespaces that the filter selects; selecting none selects them all.
   selected: [] as string[],
+  // The kinds that the user may list.
+  listable: new Set<string>(),
 }));
 vi.mock("./helpers/stores", () => ({
   getMapStores: () => host.stores,
@@ -133,7 +135,7 @@ vi.mock("./helpers/stores", () => ({
     areAllSelectedImplicitly: host.selected.length === 0,
     hasContext: (namespace: string) => host.selected.includes(namespace),
   }),
-  canListMapStore: () => true,
+  canListMapStore: (key: string) => host.listable.has(key),
 }));
 vi.mock("./helpers/theme-colors", () => ({
   getCanvasColors: () => ({ background: "#1e2124", text: "#ffffff" }),
@@ -163,6 +165,7 @@ beforeEach(() => {
   host.stores = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeStore(kind)]));
   host.apis = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeApi(kind)]));
   host.selected = [];
+  host.listable = new Set(Object.keys(kinds));
   const force = { strength: vi.fn(() => force), distance: vi.fn(() => force) };
   graph.props = undefined;
   graph.methods = {
@@ -287,6 +290,89 @@ describe("KubeResourceChart", () => {
     act(() => resize(600, 400));
 
     expect(item()?.dataset).toMatchObject({ x: "300", y: "200" });
+  });
+
+  const webService = () =>
+    kubeObject<Renderer.K8sApi.Service>(
+      "Service",
+      { name: "web", namespace: "shop" },
+      { spec: { selector: { app: "web" } } },
+    );
+
+  it("builds the map again when a store that it follows replaces an object in its place, under React.StrictMode, and stops following it after the unmount", async () => {
+    const service = webService();
+    host.stores.services.items.replace([service]);
+    host.stores.pods.items.replace([pod("web-1", "shop", { labels: { app: "web" } })]);
+    const { unmount } = render(
+      <React.StrictMode>
+        <KubeServiceChart object={service} />
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(linkIds()).toEqual(["Pod/shop/web-1 -> Service/shop/web"]));
+    expect(getObserverTree(host.stores.pods.items).observers).toHaveLength(1);
+
+    // The host replaces the object of a watch event where it is: the array keeps its length.
+    act(() => runInAction(() => host.stores.pods.items.splice(0, 1, pod("web-1", "shop", { labels: { app: "api" } }))));
+
+    expect(linkIds()).toEqual([]);
+
+    unmount();
+
+    expect(getObserverTree(host.stores.pods.items).observers ?? []).toHaveLength(0);
+  });
+
+  it("refreshes the node of an object that its store replaces with another status, and gives the graph no new data", async () => {
+    const service = webService();
+    host.stores.services.items.replace([service]);
+    host.stores.pods.items.replace([pod("web-1", "shop", { labels: { app: "web" } })]);
+    render(<KubeServiceChart object={service} />);
+    await waitFor(() => expect(linkIds()).toEqual(["Pod/shop/web-1 -> Service/shop/web"]));
+    const data = graph.props?.graphData;
+    const failed = pod("web-1", "shop", { labels: { app: "web" }, status: "Failed" });
+
+    act(() => runInAction(() => host.stores.pods.items.splice(0, 1, failed)));
+
+    expect(graph.props?.graphData).toBe(data);
+    const node = graph.props?.graphData.nodes.find((candidate) => candidate.id === "Pod/shop/web-1");
+    expect(node?.object).toBe(failed);
+    expect(node?.color).toBe("#ce3933");
+  });
+
+  describe("for a kind that the user cannot list", () => {
+    const withCredentials = (name: string, namespace: string) =>
+      pod(name, namespace, { volumes: [{ name: "credentials", secret: { secretName: "db-credentials" } }] });
+
+    beforeEach(() => {
+      host.listable.delete("secrets");
+    });
+
+    it("neither loads nor watches its store, and draws none of it", async () => {
+      const web1 = withCredentials("web-1", "shop");
+      host.stores.pods.items.replace([web1]);
+      host.stores.secrets.items.replace([secret("db-credentials", "shop")]);
+
+      render(<KubePodChart object={web1} />);
+
+      await waitFor(() => expect(graph.props?.graphData.nodes.map((node) => node.id)).toEqual(["Pod/shop/web-1"]));
+      expect(host.stores.secrets.loads).toBe(0);
+      expect(host.stores.secrets.subscriptions).toBe(0);
+      expect(host.stores.pods.subscriptions).toBe(1);
+    });
+
+    it("does not list it in a namespace that the filter does not select", async () => {
+      host.selected = ["shop"];
+      const stock1 = withCredentials("stock-1", "inventory");
+      host.apis.pods.objects = [stock1];
+      host.apis.secrets.objects = [secret("db-credentials", "inventory")];
+
+      render(<KubePodChart object={stock1} />);
+
+      await waitFor(() => expect(host.apis.pods.lists).toEqual(["inventory"]));
+      await waitFor(() =>
+        expect(graph.props?.graphData.nodes.map((node) => node.id)).toEqual(["Pod/inventory/stock-1"]),
+      );
+      expect(host.apis.secrets.lists).toEqual([]);
+    });
   });
 
   it("builds the map again for a new instance of its object", async () => {
@@ -445,6 +531,32 @@ describe("KubeResourceChart", () => {
 
       await waitFor(() => expect(host.apis.services.lists).toEqual(["inventory", "inventory"]));
       await waitFor(() => expect(linkIds()).toEqual(stockLinks));
+    });
+
+    it("aborts the list of an earlier instance of its object, and draws the list of the newer one", async () => {
+      const { pods } = host.apis;
+      let first: (objects: KubeObject[]) => void = () => {};
+      pods.list = (options) => {
+        pods.lists.push(options?.namespace ?? "");
+        if (options?.reqInit?.signal) pods.signals.push(options.reqInit.signal);
+        // The first list comes back after the second, without minding its abort.
+        if (pods.lists.length === 1) return new Promise((resolve) => (first = resolve));
+        return Promise.resolve([pod("stock-2", "inventory", { labels: { app: "stock" } })]);
+      };
+      const { rerender } = render(<KubeControllerChart object={stock()} />);
+      await waitFor(() => expect(pods.lists).toEqual(["inventory"]));
+
+      rerender(<KubeControllerChart object={stock()} />);
+      await waitFor(() => expect(pods.lists).toEqual(["inventory", "inventory"]));
+      first([pod("stock-0", "inventory", { labels: { app: "stock" } })]);
+
+      await waitFor(() =>
+        expect(linkIds()).toEqual([
+          "Deployment/inventory/stock -> Pod/inventory/stock-2",
+          "Pod/inventory/stock-2 -> Service/inventory/stock",
+        ]),
+      );
+      expect(pods.signals.map((signal) => signal.aborted)).toEqual([true, false]);
     });
 
     it("aborts a list that has not come back when it unmounts, and logs nothing", async () => {

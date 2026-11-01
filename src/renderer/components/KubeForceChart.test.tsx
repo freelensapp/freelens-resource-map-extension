@@ -403,6 +403,22 @@ describe("KubeForceChart", () => {
     expect(screen.getByTestId("resource-map-nodes").children).toHaveLength(0);
   });
 
+  it("refreshes in place the node of an object that its store replaces, as the host does for a change of the object", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    const data = graph.props?.graphData;
+    const failed = pod("web-1", "shop", { status: "Failed" });
+
+    // The host replaces the object of a watch event where it is: the array keeps its length.
+    act(() => runInAction(() => host.stores.pods.items.splice(0, 1, failed)));
+
+    expect(graph.props?.graphData).toBe(data);
+    const node = graph.props?.graphData.nodes.find((candidate) => candidate.id === "Pod/shop/web-1");
+    expect(node?.object).toBe(failed);
+    expect(node?.color).toBe("#ce3933");
+  });
+
   it("takes the points of its nodes again when its container resizes, as the graph keeps the center of its view", async () => {
     host.stores.pods.items.replace([pod("web-1", "shop")]);
     render(<KubeForceChart />);

@@ -223,6 +223,8 @@ describe("the builders of the details maps", () => {
       const second = buildControllerMap(web, input, first);
 
       expect(second.nodes).toEqual(first.nodes);
+      expect(linkIds(second)).toEqual(linkIds(first));
+      expect(second.links).toHaveLength(first.links.length);
       second.nodes.forEach((node, i) => expect(node).toBe(first.nodes[i]));
       second.links.forEach((link, i) => expect(link).toBe(first.links[i]));
     });
