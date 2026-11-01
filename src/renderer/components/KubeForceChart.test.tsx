@@ -5,11 +5,13 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { compareShallow, getObserverTree, observable, reaction, runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { boxOnCanvas, fakeFitMethods, nameBelowCircle } from "../../../test/canvas";
 import { kubeObject, pod, secret } from "../../../test/kube-objects";
 import { KubeForceChart } from "./KubeForceChart";
 
 import type { IObservableArray } from "mobx";
 
+import type { GraphBox } from "../../../test/canvas";
 import type { ChartDataSeries, LinkObject } from "./helpers/types";
 
 type KubeObject = Renderer.K8sApi.KubeObject;
@@ -91,6 +93,8 @@ interface GraphProps {
   onNodeHover(node: ChartDataSeries | null, previous: ChartDataSeries | null): void;
   onEngineStop(): void;
   onNodeClick(node: ChartDataSeries, event: MouseEvent): void;
+  nodeCanvasObject(node: ChartDataSeries, ctx: CanvasRenderingContext2D, globalScale: number): void;
+  maxZoom: number;
   ref?: { current: unknown };
 }
 
@@ -147,6 +151,9 @@ const kinds = {
 };
 
 let selection: IObservableArray<string>;
+// The box of the nodes that the graph gives, and the methods that fit the graph to its canvas.
+let box: GraphBox;
+let fit: ReturnType<typeof fakeFitMethods>;
 
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
@@ -160,9 +167,13 @@ beforeEach(() => {
   };
   const force = { strength: vi.fn(() => force), distance: vi.fn(() => force) };
   graph.props = undefined;
+  box = { x: [-200, 200], y: [-150, 150] };
+  fit = fakeFitMethods(
+    () => box,
+    () => ({ width: graph.props?.width ?? 0, height: graph.props?.height ?? 0 }),
+  );
   graph.methods = {
-    zoom: vi.fn(),
-    zoomToFit: vi.fn(),
+    ...fit,
     d3Force: vi.fn(() => force),
     graph2ScreenCoords: vi.fn((x: number, y: number) => ({ x: x + 400, y: y + 300 })),
   };
@@ -402,6 +413,34 @@ describe("KubeForceChart", () => {
     expect(map()).toBeNull();
     expect(screen.getByTestId("resource-map-nodes").children).toHaveLength(0);
   });
+
+  const fits: [string, number, GraphBox][] = [
+    ["of more than ten nodes", 11, { x: [-200, 200], y: [-150, 150] }],
+    ["of ten nodes or fewer, larger than the canvas at a zoom of 1.2", 1, { x: [-300, 300], y: [-300, 300] }],
+    ["of ten nodes or fewer, smaller than the canvas", 1, { x: [-40, 40], y: [-30, 30] }],
+  ];
+  it.each(fits)(
+    "fits to its canvas a graph %s, the names below the nodes of the bottom row included",
+    async (_case, count, nodesBox) => {
+      box = nodesBox;
+      host.stores.pods.items.replace(Array.from({ length: count }, (_, index) => pod(`web-${index}`, "shop")));
+      render(<KubeForceChart />);
+      await waitFor(() => expect(drawnIds()).toHaveLength(count));
+      act(() => FakeResizeObserver.last?.resize(800, 600));
+
+      act(() => graph.props?.onEngineStop());
+
+      const props = graph.props as GraphProps;
+      const view = boxOnCanvas(fit, box, props);
+      expect(view.zoom).toBeLessThanOrEqual(count > 10 ? props.maxZoom : 1.2);
+      expect(view.left).toBeGreaterThanOrEqual(0);
+      expect(view.right).toBeLessThanOrEqual(props.width);
+      expect(view.top).toBeGreaterThanOrEqual(0);
+      // The box holds the circles of the nodes: the name of a node of the bottom row reaches below it.
+      const name = nameBelowCircle(props.nodeCanvasObject, props.graphData.nodes[0], view.zoom);
+      expect(view.bottom + name).toBeLessThanOrEqual(props.height);
+    },
+  );
 
   it("refreshes in place the node of an object that its store replaces, as the host does for a change of the object", async () => {
     host.stores.pods.items.replace([pod("web-1", "shop")]);

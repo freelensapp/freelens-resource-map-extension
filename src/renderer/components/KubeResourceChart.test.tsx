@@ -5,6 +5,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { getObserverTree, observable, runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { boxOnCanvas, fakeFitMethods, nameBelowCircle } from "../../../test/canvas";
 import { deployment, kubeObject, pod, secret } from "../../../test/kube-objects";
 import { KubeControllerChart } from "./KubeControllerChart";
 import { KubePodChart } from "./KubePodChart";
@@ -14,6 +15,7 @@ import type { Renderer } from "@freelensapp/extensions";
 
 import type { IObservableArray } from "mobx";
 
+import type { GraphBox } from "../../../test/canvas";
 import type { ChartDataSeries, LinkObject } from "./helpers/types";
 
 type KubeObject = Renderer.K8sApi.KubeObject;
@@ -100,7 +102,11 @@ function fakeApi(kind: string): FakeApi {
 
 interface GraphProps {
   graphData: { nodes: ChartDataSeries[]; links: LinkObject[] };
+  width: number;
+  height: number;
   onEngineStop(): void;
+  nodeCanvasObject(node: ChartDataSeries, ctx: CanvasRenderingContext2D, globalScale: number): void;
+  maxZoom: number;
   ref?: { current: unknown };
 }
 
@@ -153,6 +159,10 @@ const kinds = {
   secrets: "Secret",
 };
 
+// The box of the nodes that the graph gives, and the methods that fit the graph to its canvas.
+let box: GraphBox;
+let fit: ReturnType<typeof fakeFitMethods>;
+
 // jsdom has no ResizeObserver; the size of the map does not matter here.
 class NoResizeObserver {
   observe() {}
@@ -168,9 +178,13 @@ beforeEach(() => {
   host.listable = new Set(Object.keys(kinds));
   const force = { strength: vi.fn(() => force), distance: vi.fn(() => force) };
   graph.props = undefined;
+  box = { x: [-200, 200], y: [-100, 100] };
+  fit = fakeFitMethods(
+    () => box,
+    () => ({ width: graph.props?.width ?? 0, height: graph.props?.height ?? 0 }),
+  );
   graph.methods = {
-    zoom: vi.fn(),
-    zoomToFit: vi.fn(),
+    ...fit,
     d3Force: vi.fn(() => force),
     graph2ScreenCoords: vi.fn((x: number, y: number) => ({ x: x + 400, y: y + 200 })),
   };
@@ -262,6 +276,51 @@ describe("KubeResourceChart", () => {
       new Error("Failed to load api/v1/configmaps"),
     );
   });
+
+  const fits: [string, number, GraphBox][] = [
+    ["of more than ten nodes", 11, { x: [-300, 300], y: [-160, 160] }],
+    ["of ten nodes or fewer, larger than the canvas at a zoom of 1.2", 1, { x: [-100, 100], y: [-250, 250] }],
+    ["of ten nodes or fewer, smaller than the canvas", 1, { x: [-40, 40], y: [-30, 30] }],
+  ];
+  it.each(fits)(
+    "fits to its canvas a map %s, the names below the nodes of the bottom row included",
+    async (_case, count, nodesBox) => {
+      let resize = (_width: number, _height: number) => {};
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(callback: ResizeObserverCallback) {
+            resize = (width, height) =>
+              callback([{ contentRect: { width, height } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      box = nodesBox;
+      const web = webService();
+      host.selected = ["shop"];
+      host.stores.services.items.replace([web]);
+      host.stores.pods.items.replace(
+        Array.from({ length: count - 1 }, (_, index) => pod(`web-${index}`, "shop", { labels: { app: "web" } })),
+      );
+      render(<KubeServiceChart object={web} />);
+      await waitFor(() => expect(graph.props?.graphData.nodes).toHaveLength(count));
+      act(() => resize(800, 400));
+
+      act(() => graph.props?.onEngineStop());
+
+      const props = graph.props as GraphProps;
+      const view = boxOnCanvas(fit, box, props);
+      expect(view.zoom).toBeLessThanOrEqual(1.2);
+      expect(view.left).toBeGreaterThanOrEqual(0);
+      expect(view.right).toBeLessThanOrEqual(props.width);
+      expect(view.top).toBeGreaterThanOrEqual(0);
+      // The box holds the circles of the nodes: the name of a node of the bottom row reaches below it.
+      const name = nameBelowCircle(props.nodeCanvasObject, props.graphData.nodes[0], view.zoom);
+      expect(view.bottom + name).toBeLessThanOrEqual(props.height);
+    },
+  );
 
   it("takes the points of its nodes again when its container resizes, as the graph keeps the center of its view", async () => {
     let resize = (_width: number, _height: number) => {};

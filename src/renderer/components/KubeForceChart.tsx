@@ -7,10 +7,12 @@ import { config } from "./helpers/config";
 import { ElementSize } from "./helpers/element-size";
 import {
   applyMapForces,
+  fitGraph,
   type GraphMethods,
   type NodePoint,
   nodePointsOf,
   refWithSetter,
+  smallGraphZoom,
 } from "./helpers/graph-methods";
 import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { buildNamespaceGraph, type NamespaceGraphObjects, sameGraph } from "./helpers/namespace-graph";
@@ -42,6 +44,9 @@ interface MapStore {
 }
 
 const logPrefix = "[@freelensapp/resource-map-extension]";
+
+// The largest zoom of the graph of the page and of the panel.
+const maxZoom = 2;
 
 @observer
 export class KubeForceChart extends React.Component<object, State> {
@@ -323,18 +328,18 @@ export class KubeForceChart extends React.Component<object, State> {
           height={this.size.height}
           autoPauseRedraw={false}
           linkWidth={(link) => (this.state.highlightLinks.has(link) ? 2 : 1)}
-          maxZoom={2}
+          maxZoom={maxZoom}
           cooldownTicks={200}
           onEngineStop={() => {
             if (this.initZoomDone) {
               this.settle();
             } else if (this.nodes.length > 10) {
               this.initZoomDone = true;
-              this.chart?.zoomToFit(400);
+              fitGraph(this.chart, this.size, maxZoom, 400);
               this.settleTimer = setTimeout(() => this.settle(), 400);
             } else {
               this.initZoomDone = true;
-              this.chart?.zoom(1.2);
+              fitGraph(this.chart, this.size, smallGraphZoom, 0);
               this.settle();
             }
           }}
