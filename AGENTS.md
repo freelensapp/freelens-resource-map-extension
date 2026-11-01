@@ -127,8 +127,8 @@ pnpm type:check:environments   # Environment tests
 # Linting & formatting
 pnpm biome:check          # TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML, Markdown (biome)
 pnpm biome:fix            # Auto-fix the formats above
-pnpm trunk:check          # TOML, shell, workflows, yamllint, and Biome again (changed files)
-pnpm trunk:fix            # Auto-fix TOML, shell, and the Biome formats
+pnpm trunk:check          # TOML, shell, workflows, yamllint, fixture manifests, and Biome again (changed files)
+pnpm trunk:fix            # Auto-fix TOML, shell, fixture manifests, and the Biome formats
 pnpm lint:check           # Alias for biome:check
 pnpm lint:fix             # Alias for biome:fix
 pnpm knip:check           # Unused files, unused and unlisted dependencies (knip)
@@ -236,12 +236,13 @@ for that kind (`buildControllerMap`, `buildPodMap`, `buildServiceMap`,
 `ForceGraph2D` of `react-force-graph-2d` and set the link, charge, collision and
 center forces of its simulation; the last three come from `d3-force`
 (`applyMapForces` of `helpers/graph-methods.ts`). They set them when the graph
-puts its methods in their ref, a ref object with a setter (`refWithSetter`):
-`react-force-graph-2d` takes no callback ref. They draw every node themselves,
-in `nodeCanvasObject`: a circle in the color of its kind, the icon of its kind
-on it, and its name below. A pod takes the color of its status. A workload on
-the page and in the panel, and the shown object in a details map, get an outer
-ring. The fill of the ring and the color of the names come from the active theme
+puts its methods in their ref, a ref object with a setter (`refWithSetter`): the
+declaration of `react-force-graph-2d` types `ref` as a ref object, so a callback
+ref fails the type check. They draw every node themselves, in
+`nodeCanvasObject`: a circle in the color of its kind, the icon of its kind on
+it, and its name below. A pod takes the color of its status. A workload on the
+page and in the panel, and the shown object in a details map, get an outer ring.
+The fill of the ring and the color of the names come from the active theme
 (`Renderer.Theme.activeTheme`), which the graphs read while they render, with
 `getCanvasColors()` of `helpers/theme-colors.ts`. A link takes the color of its
 source, and the links of the node under the pointer are drawn thicker.
@@ -266,46 +267,51 @@ claims that its containers' `envFrom` and `env` `secretKeyRef`s name and its
 `configMap`, `secret` and `persistentVolumeClaim` volumes mount, and a Helm
 release, known from the labels and annotations that Helm sets and from its
 release secrets, to its workloads and those secrets. A `configMapKeyRef`, a
-projected volume or an init container gives no link, and in the Service and
-Ingress maps a pod links to no config map, secret or claim. In a details map a
-Helm release is known from the labels and annotations that Helm sets on its
-workloads alone, and none of its release secrets links to it. The page and the
-panel draw the objects of the namespaces that the filter selects, a config map
-only when a pod links to it, a TLS secret only when a link reaches it, and a
-service account token secret only when a link other than a `secret` volume
-reaches it. A details map draws the objects related to its object in the
-object's namespace: those of the stores when the filter selects that namespace,
-as the map loads the stores for the namespaces of the filter, and otherwise
-those that it lists itself ("Data"). For a pod that no StatefulSet or DaemonSet owns, the Pod, Service and
-Ingress maps take as its Deployment the first one of its namespace all of whose
-`matchLabels` the pod carries; `matchExpressions` are not read, and a Deployment
-without `matchLabels` takes no pod. In the workload and Pod maps, only the first
-Ingress of the namespace whose backend names a Service on the map gets a node,
-with its TLS secrets, and the links of every later such Ingress start from that
-node. A graph shows a spinner until its stores have loaded, and the page and the
-panel show "No visualizable resources found in this namespace." when the stores,
-config maps aside, loaded no object; the message stays until the selection of
-the filter changes, because the reactions do not clear it.
+projected volume, an init container or the default backend of an Ingress
+(`spec.defaultBackend`, or `spec.backend` of `extensions/v1beta1`) gives no
+link, and in the Service and Ingress maps a pod links to no config map, secret
+or claim. In a details map a Helm release is known from the labels and
+annotations that Helm sets on its workloads alone, and none of its release
+secrets links to it. The page and the panel draw the objects of the namespaces
+that the filter selects, a config map only when a pod links to it, a TLS secret
+only when a link reaches it, and a service account token secret only when a link
+other than a `secret` volume reaches it. A details map draws the objects related
+to its object in the object's namespace: those of the stores when the filter
+selects that namespace, as the map loads the stores for the namespaces of the
+filter, and otherwise those that it lists itself ("Data"). For a pod that no
+StatefulSet or DaemonSet owns, the Pod, Service and Ingress maps take as its
+Deployment the first one of its namespace all of whose `matchLabels` the pod
+carries; `matchExpressions` are not read, and a Deployment without `matchLabels`
+takes no pod. In the workload and Pod maps, only the first Ingress of the
+namespace whose backend names a Service on the map gets a node, with its TLS
+secrets, and the links of every later such Ingress start from that node. A graph
+shows a spinner until its stores have loaded, and the page and the panel show
+"No visualizable resources found in this namespace." when the stores, config
+maps aside, loaded no object; the message stays until the selection of the
+filter changes, because the reactions do not clear it.
 
 On the page and the panel, `buildNamespaceGraph` of `helpers/namespace-graph.ts`
 builds the nodes and the links from the stores' items, the selected namespaces
-and the previous graph; it reads no store and starts no reaction. The id of a
-node is the kind, the namespace and the name of its object, so two objects of
-the same kind and name in two namespaces are two nodes. It reuses the objects of
-the previous graph: a node whose id it builds again is the same node object,
-with its object and color refreshed, and so is a link whose ends it builds
-again. force-graph keeps the position of a node, and the picking color of a node
-or a link, on the object itself, and its color registry frees nothing, so new
-copies of the same nodes and links would fill it up. A change in a store builds
-the graph again from the previous one, and a node that nothing references any
-more leaves it, such as a config map that no pod reads. `KubeForceChart` gives
-the graph new data, which starts the simulation again, only when the nodes or
-the links change by id (`sameGraph`); otherwise the canvas, which force-graph
-draws on every frame (`autoPauseRedraw={false}`), shows the refreshed nodes
-where they are. A load of the stores, when the graph mounts and when the
-selection changes, starts from no previous graph. A details map builds its graph
-in the same way, around its object and in its namespace, with the builder of its
-kind. Its node id is the kind, the namespace and the name of its object as well.
+and the previous graph; it starts no reaction, and reaches a store only through
+`childPods`, which `KubeForceChart` answers with `getChildPods` of the store of
+the workload's kind. The id of a node is the kind, the namespace and the name of
+its object, so two objects of the same kind and name in two namespaces are two
+nodes. It reuses the objects of the previous graph: a node whose id it builds
+again is the same node object, with its object and color refreshed, and so is a
+link whose ends it builds again. force-graph keeps the position of a node, and
+the picking color of a node or a link, on the object itself. Its color registry
+gives an entry to every object without one and frees none until new data holds
+no object that has one, as on a load, so new copies of the same nodes and links
+would fill it up. A change in a store builds the graph again from the previous
+one, and a node that nothing references any more leaves it, such as a config map
+that no pod reads. `KubeForceChart` gives the graph new data, which starts the
+simulation again, only when the nodes or the links change by id (`sameGraph`);
+otherwise the canvas, which force-graph draws on every frame
+(`autoPauseRedraw={false}`), shows the refreshed nodes where they are. A load of
+the stores, when the graph mounts and when the selection changes, starts from no
+previous graph. A details map builds its graph in the same way, around its
+object and in its namespace, with the builder of its kind. Its node id is the
+kind, the namespace and the name of its object as well.
 
 When a graph stops after its first zoom (`onEngineStop`), its map marks its
 container with `data-settled` and fills a visually hidden list,
@@ -342,12 +348,15 @@ stores of the kinds that the user may list (`canListMapStore` of
 abortController })`). A new load of the page or the panel, when the selection
 changes, and `componentWillUnmount` abort it, and a load that comes back aborted
 writes nothing and starts no watch, so `React.StrictMode` leaves one load and
-one watch per store. A list that fails reaches `onLoadFailure`, which logs a
-warning, and the map draws the other kinds. The watches get the same handler
-(`subscribe({ abortController, onLoadFailure })`): when the API server answers a
-watch with 410 Gone, the store lists the namespace again by itself, and a list
-that fails there without the handler empties the store, which the host's own
-views share. A `reaction` per store, on
+one watch per store. A details map also waits one microtask before its first
+request, so its first mount, which `React.StrictMode` unmounts at once, sends
+nothing. A list that fails reaches `onLoadFailure`, which logs a warning, and
+the map draws the other kinds. The watches get the same handler (`subscribe({
+abortController, onLoadFailure })`): when the API server answers a watch with
+410 Gone, the store lists again by itself the namespace of the watch, or every
+namespace for a watch of all of them, and a list that fails there without the
+handler empties the store, which the host's own views share, and leaves it
+unloaded until a view loads it again. A `reaction` per store, on
 `store.items.toJSON()` compared with `compareStructural`, builds the graph again
 when the store changes; `toJSON()` reads every item and returns a new array, so
 the reaction sees the objects that the host replaces in place ("Rules That Fail
@@ -355,50 +364,49 @@ Silently"). The page and the panel follow the selection of the filter with one
 reaction, `namespaceStore.onContextChange` with `fireImmediately`, registered
 when they mount and disposed when they unmount: it keeps the namespaces it is
 given, which every build of the graph reads, and loads the stores again when
-they change. A build starts no reaction of its own. A details map loads every store
-when it mounts, as the page does, also one that has loaded already: a store
-holds and watches the namespaces of its last load, and the host loads it again
-for a new selection only while one of its own views follows it, so a store
+they change. A build starts no reaction of its own. A details map loads every
+store when it mounts, as the page does, also one that has loaded already: a
+store holds and watches the namespaces of its last load, and the host loads it
+again for a new selection only while one of its own views follows it, so a store
 loaded for an earlier selection would hold none of the objects of a namespace
-selected since. The map watches them all, reacts to the pods and to the store
-of its object's kind, and follows a new `object` from the host in
+selected since. The map watches them all, reacts to the pods and to the store of
+its object's kind, and follows a new `object` from the host in
 `componentDidUpdate`. It does not load again when the selection changes: it
 keeps the stores and the graph it has.
 
 The object of a details map can be in a namespace that the stores do not load,
 when the filter selects other namespaces: a pod opened from the details of its
-node, or a drawer opened from a link. Its map then lists the nine kinds in that
-namespace itself, with the host's APIs (`list({ namespace })`), alongside the
-loads of the stores, and shows its spinner until both are done. The map loads
-the stores for the namespaces that the filter selects, and for every namespace
-when it selects none, so it lists the namespace of its object when the filter
-does not select it (`namespaceStore.areAllSelectedImplicitly`, then
-`hasContext`). The map
-loads no store with that namespace: the stores are shared, and a `loadAll` with
-other namespaces would make them load and watch those in place of the
-selection, under the host's own views. The list has an `AbortController` of its
-own, which a newer list and `componentWillUnmount` abort, and a list that comes
-back aborted writes nothing. Kind by kind, the listed objects take the place of
-what the stores hold in that namespace: when the selection changes, the stores
-keep the items of the namespaces they no longer load, and no longer watch them,
-and the host adds the object of a drawer to the store of its kind, so what they
-hold there can be stale. A list that fails is logged as a warning, and its kind
-keeps what its store holds. With listed pods, the map finds the pods of a
-workload among its pods as the host's stores find them among theirs
-(`childPodsOf` of `helpers/details-graph.ts`): by the labels of the pod
-template for a Deployment, and by owner for a StatefulSet or a DaemonSet. No
-watch of the map's own follows the listed objects. It lists the namespace again
-when the host passes a new `object`, and, at most once a second
-(`relistOnChange`), when the items of a store that it follows, the pods or the
-store of its object's kind, have changed there since the last list started:
-that store is watched there, by a view of the host or by the map's own
-subscription, as the pods store is once the Nodes page or the details of a
-node have loaded every namespace, and the listed objects would hide its
-changes. The map is built again when the list is back. It decides whether to
-list the first time it looks at the namespace of its object, and keeps to it: it
-loaded its stores for the selection of that moment and does not follow the
-selection, so a filter that comes to select the namespace does not make it
-drop the list.
+node, or a drawer opened from a link. Its map then lists that namespace itself,
+the kinds that the user may list (`canListMapStore`), with the host's APIs
+(`list({ namespace })`), alongside the loads of the stores, and shows its
+spinner until both are done. The map loads the stores for the namespaces that
+the filter selects, and for every namespace when it selects none, so it lists
+the namespace of its object when the filter does not select it
+(`namespaceStore.areAllSelectedImplicitly`, then `hasContext`). The map loads no
+store with that namespace: the stores are shared, and a `loadAll` with other
+namespaces would make them load and watch those in place of the selection, under
+the host's own views. The list has an `AbortController` of its own, which a
+newer list and `componentWillUnmount` abort, and a list that comes back aborted
+writes nothing. Kind by kind, the listed objects take the place of what the
+stores hold in that namespace: when the selection changes, the stores keep the
+items of the namespaces they no longer load, and no longer watch them, and the
+host adds the object of a drawer to the store of its kind, so what they hold
+there can be stale. A list that fails is logged as a warning, and its kind keeps
+what its store holds. With listed pods, the map finds the pods of a workload
+among its pods as the host's stores find them among theirs (`childPodsOf` of
+`helpers/details-graph.ts`): by the labels of the pod template for a Deployment,
+and by owner for a StatefulSet or a DaemonSet. No watch of the map's own follows
+the listed objects. It lists the namespace again when the host passes a new
+`object`, and, at most once a second (`relistOnChange`), when the items of a
+store that it follows, the pods or the store of its object's kind, have changed
+there since the last list started: that store is watched there, by a view of the
+host or by the map's own subscription, as the pods store is once the Nodes page
+or the details of a node have loaded every namespace, and the listed objects
+would hide its changes. The map is built again when the list is back. It decides
+whether to list the first time it looks at the namespace of its object, and
+keeps to it: it loaded its stores for the selection of that moment and does not
+follow the selection, so a filter that comes to select the namespace does not
+make it drop the list.
 
 ### Tooltips, icons and clicks
 
@@ -411,23 +419,26 @@ node in its own React tree, in a `div` next to the pointer, which the mouse
 moves over the graph's container place without a render. That `div` is
 `MapTooltip` of `tooltips/map-tooltip.tsx`, with the test id
 `resource-map-tooltip` and `pointer-events: none`: the container hands its mouse
-moves to `follow`, which keeps it in the container, on the side of the pointer
-where it fits, so that it never makes the content of a details drawer overflow,
-and `NodeTooltip` picks the tooltip of the kind. The graph reports the node
+moves to `follow`, which puts it on the side of the pointer where it fits in the
+container, or against the left or top edge of the container when it fits on
+neither side, and `NodeTooltip` picks the tooltip of the kind. A tooltip no
+larger than the map stays inside it, so it does not make the content of a
+details drawer overflow; a larger one, such as that of a pod with many labels in
+the 400 px of a details map, goes past the edge. The graph reports the node
 under the pointer after the move that reached it, so the tooltip gets its
 content, and its size, after `follow` has placed it: `MapTooltip` places itself
-again, at the last point of the pointer, when it shows another node. The tooltips take the theme's
-colors: `--textColorSecondary` for their text, `--drawerItemNameColor` and
-`--drawerItemValueColor` for the names and values of a `DrawerItem`, and
-`--tooltipBackground`, `--borderColor` and `--textColorPrimary` for the box of
-`MapTooltip`. force-graph shows its tooltip with float-tooltip, which sets a
-label that is a string as HTML, appends one that is an element, and renders a
-JSX element with its own copy of Preact, bundled with it. The host's components
-run on the host's React, which Preact does not provide, and an HTML string of
-them needs `react-dom/server`, which the host does not publish ("Modules
-provided by the host"). Rendered in the graph's own tree, the tooltip is part of
-the graph's render, on the host's React. `nodeLabel` returns an empty string, so
-force-graph shows no tooltip of its own.
+again, at the last point of the pointer, when it shows another node. The
+tooltips take the theme's colors: `--textColorSecondary` for their text,
+`--drawerItemNameColor` and `--drawerItemValueColor` for the names and values of
+a `DrawerItem`, and `--tooltipBackground`, `--borderColor` and
+`--textColorPrimary` for the box of `MapTooltip`. force-graph shows its tooltip
+with float-tooltip, which sets a label that is a string as HTML, appends one
+that is an element, and renders a JSX element with its own copy of Preact,
+bundled with it. The host's components run on the host's React, which Preact
+does not provide, and an HTML string of them needs `react-dom/server`, which the
+host does not publish ("Modules provided by the host"). Rendered in the graph's
+own tree, the tooltip is part of the graph's render, on the host's React.
+`nodeLabel` returns an empty string, so force-graph shows no tooltip of its own.
 
 The icon of every kind is an SVG file in `src/renderer/assets/icons/`, imported
 with `?url` in `helpers/config.ts`. Library mode inlines every asset it
@@ -485,14 +496,13 @@ route of Freelens where the release opens.
     callbacks (`nodeCanvasObject`, `linkColor`, `onNodeClick` and the others) from its animation frame and its event
     handlers. What they throw reaches no boundary and is an uncaught error of the page, so the graphs catch and log the
     errors they expect there, such as a store that fails to load or an icon that fails to draw.
-  - The boundary has no decorators and no `observer`; it reads no observable, and the components inside it are
-    observers of their own.
+  - The boundary has no decorators and no `observer`; it reads no observable, and the graphs inside it, which do, are observers of their own.
 - Components import their CSS module for the class names only, with no `?inline` import and no `<style>` tag; the rules
   reach the page through `renderer.css` (see "CSS"). `:global(...)` names the classes a module does not own: the host's
   (`.DrawerItem`, `.Badge`, `.StatusBrick`, `.Table`), the canvas container of force-graph (`.force-graph-container`)
   and the cursor classes it sets on the canvas (`.clickable`, `.grabbable`), and the plain names that the tooltips give
   the host's components or take from an object, such as `conditions` or the status of a pod. Layout is written in the
-  modules' own rules: the host no longer ships its flexbox utility classes, so a class such as `gaps` or `box` matches
+  modules' own rules: the host ships no flexbox utility classes of its own, so a class such as `gaps` or `box` matches
   nothing, and a Tailwind class such as `flex` matches a rule of the host only while core uses it ("Migrating off
   flexbox.scss" in Freelens's `migrating-from-v1.md`). The graph's module, `KubeForceChart.module.scss`, serves both
   graphs. SCSS variables are in `src/renderer/vars.scss`, used with `@use "../vars"`.
@@ -581,17 +591,18 @@ mechanism; this is the list to check a change against.
   on: the details maps follow a new `object` in `componentDidUpdate` for this
   reason ("MobX 7 and mobx-react 10 (standard decorators only)" in Freelens's
   `migrating-from-v1.md`).
-- **A memo over a store's items is keyed on something that changes with
-  them.** The host keeps one observable array per store and updates it in
-  place, with `replace` and `splice`, so `store.items` stays the same array
-  while the objects in it change. A `useMemo` keyed on it, or on a prop that
-  holds it, is computed once, and an open view keeps the objects it was opened
-  with; a `reaction` that returns the array itself misses the changes in the
-  same way. An `observer` that reads the items while it renders follows them;
-  a memo needs a key such as the ids and `resourceVersion`s of the objects,
-  and a reaction an expression that reads every item, as
-  `store.items.toJSON()` does ("Data"). It shows only on a cluster whose
-  objects change while the view is open.
+- **A memo over a store's items is keyed on something that changes with them.**
+  The host keeps one observable array per store and changes it in place:
+  `replace` for a load and for the events of a watch, and an assignment by index
+  for an object that `patch` or `update` returns. So `store.items` stays the
+  same array while the objects in it change. A `useMemo` keyed on it, or on a
+  prop that holds it, is computed once, and an open view keeps the objects it
+  was opened with; a `reaction` that returns the array itself misses the changes
+  in the same way. An `observer` that reads the items while it renders follows
+  them; a memo needs a key such as the ids and `resourceVersion`s of the
+  objects, and a reaction an expression that reads every item, as
+  `store.items.toJSON()` does ("Data"). It shows only on a cluster whose objects
+  change while the view is open.
 - **A reaction started inside another reaction runs later.** Inside the effect
   of a reaction, or in an action, MobX runs a new reaction, its first run with
   `fireImmediately` included, only when the outer one ends. A value that its
@@ -727,10 +738,11 @@ Preact, and the d3 modules they use, and `d3-force` are in `dist/renderer.js`.
 MobX 7 supports standard decorators only, and Oxc, which transpiles TypeScript
 for Vite, passes them through unlowered, while neither Node nor Chromium runs
 them yet. `build/vite-plugin-standard-decorators.mjs`, copied from Freelens,
-hands every module with a decorator to esbuild first, which lowers the
-decorators and their `accessor` fields. Both `vite.config.mjs` and
-`vitest.config.ts` use it. A decorator that reaches the host or a test
-unlowered is a syntax error when the module is evaluated.
+hands every TypeScript module outside `node_modules` with a line that starts
+with a decorator to esbuild first, which lowers the decorators and their
+`accessor` fields. Both `vite.config.mjs` and `vitest.config.ts` use it. A
+decorator that reaches the host or a test unlowered is a syntax error when the
+module is evaluated.
 
 An observable field is an `accessor` (`@observable accessor isReady = false;`),
 and the class does not call `makeObservable(this)`. `@observable` on a plain
@@ -1072,11 +1084,12 @@ process:
   no `appPreferences`, so the session opens no preferences page.
 - `resource-map-page.tests.ts` opens the Resource Map page as the first view of
   the extension after the kind cluster connects, and selects the two test
-  namespaces. It checks the nodes of the test objects, the two Deployments
-  named `web` as two nodes and the four Ingresses included, one canvas, that
-  the map follows a change of the selection, the tooltip of a node under a real
-  pointer, and that a click on the node of the Helm release opens it at
-  `/helm/releases/shop/catalog`.
+  namespaces. It checks the nodes of the test objects of `shop` and `billing`,
+  but the StatefulSet, the DaemonSet and the Services `db` and `catalog`, the
+  two Deployments named `web` as two nodes and the four Ingresses included, one
+  canvas, that the map follows a change of the selection, the tooltip of a node
+  under a real pointer, and that a click on the node of the Helm release opens
+  it at `/helm/releases/shop/catalog`.
 - `workloads-overview.tests.ts` connects the kind cluster, which opens on the
   host's Cluster Overview, and opens Workloads > Overview. The two load pods,
   workloads, events and nodes, but no Services or Ingresses: the session checks
@@ -1103,19 +1116,20 @@ process:
 `React.StrictMode`, which Freelens dev renders in, mounts every view twice, and
 the guard of react-kapsule keeps the graph from a second init. A second init
 would still leave one canvas: force-graph empties the element it is set up on
-and makes a new container in it at every init. So each session counts, with a
-`MutationObserver` in the cluster frame (`countGraphInits`), the containers
-that force-graph makes on each element, and checks one per element
-(`graphInitsPerElement`), besides one canvas per map. The test objects are the same Deployment, Service and ConfigMap in the
-namespaces `shop` and `billing`, an Ingress with a TLS secret and a service
-backend, one without rules, one whose rule has no `http` and one with a
-`resource` backend, a StatefulSet with its headless Service and a DaemonSet,
-all in `shop`, the release `catalog` of the local chart in `shop`, a
-Deployment and a Service that Helm marks with its label and annotation, and a
-Deployment with its Service and ConfigMap in `inventory`, a namespace that no
-session selects. The pods run a pause container:
-the map reads specs, and needs no ingress controller. The drawers of a
-Deployment, a DaemonSet and a StatefulSet list their pods with the metrics of
+and makes a new container in it at every init. So each session that opens a map
+counts, with a `MutationObserver` in the cluster frame (`countGraphInits`), the
+containers that force-graph makes on each element, and checks one per element
+(`graphInitsPerElement`), besides one canvas per map. The test objects are the
+same Deployment, Service and ConfigMap in the namespaces `shop` and `billing`,
+an Ingress with a TLS secret and a service backend, one without rules, one whose
+rule has no `http` and one with a `resource` backend, a StatefulSet with its
+headless Service and a DaemonSet, all in `shop`, the release `catalog` of the
+local chart in `shop`, a Deployment and a Service that Helm marks with its label
+and annotation, and a Deployment with its Service and ConfigMap in `inventory`,
+a namespace outside the test namespaces, which only `details-drawers.tests.ts`
+selects, alone, for the second drawer of its Deployment. The pods run a pause
+container: the map reads specs, and needs no ingress controller. The drawers of
+a Deployment, a DaemonSet and a StatefulSet list their pods with the metrics of
 their namespace, which the host asks `metrics.k8s.io` for; kind has no metrics
 server, and Chromium logs the 404 of each request as an error. The error
 collector leaves out that one error by its status and URL, with an exact
@@ -1128,32 +1142,31 @@ before it fails. Vitest runs the files one at a time
 (`fileParallelism: false`), because they drive one app, in no set order, and
 none depends on another having run.
 
-The sessions reach the app through its renderer only; the main process, and
-with it the application menu, is out of reach of CDP. They navigate the root
-frame with `Renderer.Navigation.navigate` of the extension API, find the kind
-cluster with `Renderer.Catalog.catalogEntities` by its name, `kind-<name>`,
-and connect it by navigating to `/cluster/<id>` and disconnect it with the
-entity's `disconnect()`. `browser.close()` of a browser connected over CDP
-closes only the connection, so a session ends with it and the app keeps
-running. The renderer's console carries the errors of the root frame and of
-every cluster frame; the main log is read from the file that
-`FREELENS_MAIN_LOG` names, from its size when the session started, and every
-line that starts with `error:` counts, also after a task prefix that turbo
-may add, such as `freelens:dev:`, except
-`proxy_server.go:… Error while proxying request: context canceled`, which the
-Kubernetes proxy of Freelens logs for a request that the renderer aborts.
+The sessions reach the app through its renderer only; the main process, and with
+it the application menu, is out of reach of CDP. They navigate the root frame
+with `Renderer.Navigation.navigate` of the extension API, find the kind cluster
+with `Renderer.Catalog.catalogEntities` by its name, `kind-<name>`, and connect
+it by navigating to `/cluster/<id>` and disconnect it with the entity's
+`disconnect()`. `browser.close()` of a browser connected over CDP closes only
+the connection, so a session ends with it and the app keeps running. The
+renderer's console carries the errors of the root frame and of every cluster
+frame; the main log is read from the file that `FREELENS_MAIN_LOG` names, from
+its size when the session started, and every line that starts with `error:`
+counts, also after a task prefix that turbo may add, such as `freelens:dev:`,
+except `proxy_server.go:… Error while proxying request: context canceled`, which
+the Kubernetes proxy of Freelens logs for a request that the renderer aborts.
 Freelens dev renders in `React.StrictMode`, which mounts every view twice and
 aborts the requests of the first mount, so the line comes and goes with the
 timing of a run; it names no request and says nothing about the extension.
-Without the variable only the renderer is checked. A renderer error carries its location, line and column included,
-and the worker that logged it. Its text is the preview of its arguments, which
-is empty for some objects and only the class name for others, such as
-`ErrorEvent`; such an error is described from its arguments, read from the
-page, and an empty one without arguments, which the browser itself logs, gets
-its time, to find it in the main log.
-The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
-turbo otherwise groups the output of a task until it ends, and the persistent
-`dev` task never ends, so the log would stay empty.
+Without the variable only the renderer is checked. A renderer error carries its
+location, line and column included, and the worker that logged it. Its text is
+the preview of its arguments, which is empty for some objects and only the class
+name for others, such as `ErrorEvent`; such an error is described from its
+arguments, read from the page, and an empty one without arguments, which the
+browser itself logs, gets its time, to find it in the main log. The workflow
+sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions turbo otherwise
+groups the output of a task until it ends, and the persistent `dev` task never
+ends, so the log would stay empty.
 
 The helpers connect the kind cluster without opening a view of the extension
 (`connectKindCluster`), so that a session opens its own as the first one after
@@ -1206,25 +1219,30 @@ with a warning when Freelens dev does not answer or, for a session that needs
 it, the cluster is not reachable; in CI (`CI` set) the run fails instead, so
 that a mistake in the workflow does not turn into a silent skip.
 
-Run locally, the tests act on the profile of Freelens dev, `FreelensDev`,
-which is apart from that of an installed Freelens: they navigate its window,
-and leave this checkout installed in place, uninstalling another installation
-of the extension. They touch no cluster of the catalog but the kind cluster.
-The profile lists the kind cluster only once its kubeconfig is in "Kubeconfig
-Syncs" (see "Checking the Extension in Freelens Dev"); without it a session
-that needs the cluster fails on the timeout of finding it.
+Run locally, the tests act on the profile of Freelens dev, `FreelensDev`, which
+is apart from that of an installed Freelens: they navigate its window, and leave
+this checkout installed in place, uninstalling another installation of the
+extension. They touch no cluster of the catalog but the kind cluster. Run `pnpm
+build` first, since Freelens loads the extension from `dist/`, and put the test
+objects and the local chart of `integration/fixtures/` in the cluster first, as
+the workflow does and `README.md` shows: without them a session fails on the
+timeout of a view. The profile lists the kind cluster only once its kubeconfig
+is in "Kubeconfig Syncs" (see "Checking the Extension in Freelens Dev"); without
+it a session that needs the cluster fails on the timeout of finding it.
 
 ## Checking the Extension in Freelens Dev
 
-The functional checks of a change run against Freelens started with
-`pnpm dev` from a freelensapp/freelens checkout. That script starts Electron
-with `--remoteDebuggingPort 9223`, so an agent can drive the app over the
-Chrome DevTools Protocol. How to attach Playwright MCP to it is in Freelens's
-`DEVELOPMENT.md`, "Inspecting the running dev app from an AI agent"; start
-Freelens before the session connects. Playwright MCP writes its snapshots to
-`.playwright-mcp/`, which is git-ignored. Added to a Claude Code session that
-is already running, the server is listed as connected, but its tools appear
-only in a new session.
+The functional checks of a change run against Freelens started with `pnpm dev`
+from a freelensapp/freelens checkout, after `pnpm build:resources` at its root,
+as `integration-tests.yaml` does: `pnpm dev` does not download the binaries that
+Freelens bundles, and without `freelens-k8s-proxy` no cluster connects. That
+script starts Electron with `--remoteDebuggingPort 9223`, so an agent can drive
+the app over the Chrome DevTools Protocol. How to attach Playwright MCP to it is
+in Freelens's `DEVELOPMENT.md`, "Inspecting the running dev app from an AI
+agent"; start Freelens before the session connects. Playwright MCP writes its
+snapshots to `.playwright-mcp/`, which is git-ignored. Added to a Claude Code
+session that is already running, the server is listed as connected, but its
+tools appear only in a new session.
 
 Without the MCP server, or until that new session, a script with
 `chromium.connectOverCDP("http://127.0.0.1:9223")` of `playwright`, a
@@ -1272,7 +1290,11 @@ syncs of the dev profile" in Freelens's `DEVELOPMENT.md`).
   `[data-testid="link-for-sidebar-item-freelensapp--resource-map-extension-resource-map"]`.
 - The root frame navigates with `Renderer.Navigation.navigate(url)` of the
   extension API, run in its page: `/extensions`, `/catalog`, `/cluster/<id>`.
-  The application menu belongs to the main process, which CDP does not reach.
+  Run in a cluster frame, it opens a view of that cluster at its route, such as
+  `/workloads`, and there `Renderer.Navigation.showDetails(selfLink)` opens the
+  details drawer of an object, with its map, and `hideDetails()` closes it, as
+  the integration tests do. The application menu belongs to the main process,
+  which CDP does not reach.
 - Playwright's actionability checks can fail on the hotbar, where
   `#ScrollSpyRoot` intercepts pointer events; a DOM `click()` on the element
   works.
@@ -1303,11 +1325,13 @@ message does, and the error collector of the integration tests appends it. An
 extension whose tests expect such a response on purpose, a 404 or a 409, leaves
 out that one error by its status and URL, not every "Failed to load resource".
 
-The main process logs to the terminal running Freelens, and to a file. On
-macOS it is `~/Library/Logs/Freelens/lens.log`, with the renderer's
-`lens-renderer-*.log` next to it; when the terminal is not at hand, it shows
-the extension's activation, its reloads and its own lines. Filter it as the
-console.
+The main process logs to the terminal running Freelens, and to a file. On macOS
+it is `~/Library/Logs/Freelens/lens.log`, with the renderer's
+`lens-renderer-*.log` next to it; when the terminal is not at hand, `lens.log`
+shows the activation and the reloads of the main entry. This extension logs only
+from views of a cluster frame: its own lines are in the console of that frame
+and in its `lens-renderer-cluster-<clusterId>-frame.log`, not in `lens.log`.
+Filter these logs as the console.
 
 ## Code Style
 
@@ -1319,7 +1343,8 @@ console.
 
 ## Security
 
-Never read, display, reference, or include the contents of the following files in any response or context, even if they are open in the editor:
+Never read, display, reference, or include the contents of the following files
+in any response or context, even if they are open in the editor:
 
 - `.env`
 - `.env.*`
@@ -1353,10 +1378,12 @@ entry is empty, and all its code runs in the renderer.
 
 ### Changes Not Appearing
 
-1. Check that files are not in ignored output directories (`dist/`, `node_modules/`)
-2. Full clean and rebuild: `pnpm clean:all && pnpm install && pnpm build`
-3. With a directory install and `pnpm dev` running, look for a refused reload in the Freelens log, and restart
-   Freelens after a change to `main` or `renderer` in `package.json`; reinstall an extension installed from a tarball
+1. Check that files are not in ignored output directories (`dist/`,
+   `node_modules/`) 2. Full clean and rebuild: `pnpm clean:all && pnpm install &&
+pnpm build` 3. With a directory install and `pnpm dev` running, look for a
+   refused reload in the Freelens log, and restart Freelens after a change to
+   `main` or `renderer` in `package.json`; reinstall an extension installed from a
+   tarball
 
 ### Build Failures
 
@@ -1367,12 +1394,14 @@ entry is empty, and all its code runs in the renderer.
 
 ### Runtime Errors
 
-1. Open Freelens DevTools and check the Console tab for renderer errors
-2. Check the terminal where Freelens was launched for main process errors
-3. Look for stack traces with file:line numbers
-4. Look for the extension's own lines, which carry `[@freelensapp/resource-map-extension]:`; the graphs log a store
-   that fails to load and an icon that fails to draw, and the error boundary logs what a view throws
-5. Validate both with `pnpm type:check` **and** `pnpm build`: runtime failures can appear only in bundled `dist/` code
+1. Open Freelens DevTools and check the Console tab for renderer errors 2. Check
+   the terminal where Freelens was launched for main process errors 3. Look for
+   stack traces with file:line numbers 4. Look for the extension's own lines, which
+   carry `[@freelensapp/resource-map-extension]:`; the graphs log a store that
+   fails to load and an icon that fails to draw, a details map a list of the
+   namespace of its object that fails, and the error boundary what a details panel
+   or the Workloads Overview item throws 5. Validate both with `pnpm type:check`
+   **and** `pnpm build`: runtime failures can appear only in bundled `dist/` code
 
 ## Best Practices
 
@@ -1437,8 +1466,9 @@ When reviewing code and proposing fixes:
    - Do **not** use emoji in any Markdown, comments, commit messages, or
      PR descriptions. The only exception is emoji that already appears
      inside code strings (e.g. application logs, user-facing messages).
-   - Use GitHub's `suggestion` block for small targeted fixes, in an inline comment on the lines to change, so the PR
-     author can accept the change with a single click. The block holds the new text of those lines, with no diff
+   - Use GitHub's `suggestion` block for small targeted fixes, in an inline
+     comment on the lines to change, so the PR author can accept the change with
+     a single click. The block holds the new text of those lines, with no diff
      markers or file headers, because GitHub commits its content in their place:
 
      ```suggestion

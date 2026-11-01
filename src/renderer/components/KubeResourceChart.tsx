@@ -65,9 +65,10 @@ function storesLoad(namespace: string) {
 
 // The items of a store, where the listed objects of its kind, when its list
 // came back, take the place of those the store holds in the listed namespace.
-// The store does not watch that namespace: what it holds there is what a view
-// loaded once, such as the object of a panel, or what the stores loaded for an
-// earlier selection of the filter, which they keep when it changes.
+// What it holds there can be what a view loaded once, such as the object of a
+// panel, or what the stores loaded for an earlier selection of the filter,
+// which they keep when it changes. A store that does watch the namespace shows
+// its changes there, and the map lists the namespace again (relistOnChange).
 function withListed<T extends KubeObject>(
   held: readonly T[],
   namespace: string,
