@@ -1,9 +1,23 @@
 {
   "name": "@freelensapp/resource-map-extension",
-  "version": "1.0.2",
-  "description": "FreeLens extension to visualize Kubernetes resources and their relations",
-  "homepage": "https://github.com/freelensapp/freelens-resource-map-extension",
+  "version": "2.0.0-0",
+  "description": "Freelens extension to visualize Kubernetes resources and their relations",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freelensapp/freelens-resource-map-extension.git",
+    "directory": "."
+  },
+  "main": "dist/main.js",
+  "renderer": "dist/renderer.js",
+  "files": [
+    "dist/**/*"
+  ],
+  "engines": {
+    "node": ">= 24.0.0",
+    "freelens": "^2.0.0"
+  },
   "license": "MIT",
+  "type": "module",
   "author": "Yasmine Gharbi <gyasmine29@gmail.com>",
   "contributors": [
     {
@@ -19,105 +33,83 @@
       "url": "https://github.com/nevalla"
     }
   ],
-  "publisher": "freelens",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/freelensapp/freelens-resource-map-extension.git"
-  },
-  "main": "out/main/index.js",
-  "renderer": "out/renderer/index.js",
-  "engines": {
-    "node": ">=22.0.0",
-    "freelens": "^1.6.0"
-  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
+  "scripts": {
+    "biome": "pnpm dlx @biomejs/biome@2.6.3",
+    "biome:check": "pnpm biome check",
+    "biome:fix": "pnpm biome check --fix",
+    "biome:migrate": "pnpm biome migrate --write",
+    "trunk": "pnpm dlx @trunkio/launcher@1.3.4",
+    "trunk:check": "pnpm trunk check",
+    "trunk:check:all": "pnpm trunk check --all",
+    "trunk:fix": "pnpm trunk check --fix",
+    "trunk:fix:all": "pnpm trunk check --fix --all",
+    "lint": "pnpm lint:check",
+    "lint:check": "pnpm biome:check",
+    "lint:fix": "pnpm biome:fix",
+    "knip": "pnpm dlx knip@6.41.0 --dependencies --files --no-gitignore --no-config-hints",
+    "knip:check": "pnpm \"/^knip:(development|production)\\$/\"",
+    "knip:development": "pnpm knip",
+    "knip:production": "pnpm knip --production --strict",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "type:check": "pnpm type:check:sources && pnpm type:check:tests && pnpm type:check:tooling && pnpm type:check:integration && pnpm type:check:environments",
+    "type:check:sources": "tsc -p src/main && tsc -p src/renderer",
+    "type:check:tests": "tsc -p src/tsconfig.json",
+    "type:check:tooling": "tsc -p tsconfig.json",
+    "type:check:integration": "tsc -p integration",
+    "type:check:environments": "tsc -p environment-tests/tsconfig.main.json && tsc -p environment-tests/tsconfig.renderer.json && tsc -p environment-tests",
+    "build": "vite build && vite build --mode main",
+    "dev": "pnpm \"/^dev:(renderer|main)\\$/\"",
+    "dev:main": "vite build --watch --mode main",
+    "dev:renderer": "vite build --watch --no-emptyOutDir",
+    "bump-version": "pnpm version --no-commit-hooks --no-git-checks --no-git-tag-version",
+    "pack:dev": "pnpm bump-version prerelease && pnpm build && pnpm clean:tgz && pnpm pack && pnpm dlx shx@0.4.0 ls \"$PWD/*.tgz\"",
+    "clean": "pnpm clean:dist",
+    "clean:dist": "pnpm dlx shx@0.4.0 rm -rf dist",
+    "clean:dts": "pnpm dlx shx@0.4.0 rm -f \"src/**/*.d.scss.ts\"",
+    "clean:node_modules": "pnpm dlx shx@0.4.0 rm -rf node_modules",
+    "clean:tgz": "pnpm dlx shx@0.4.0 rm -f \"*.tgz\"",
+    "clean:all": "pnpm \"/^clean:(dist|dts|node_modules|tgz)\\$/\""
+  },
+  "dependencies": {
+    "d3-force": "^3.0.0",
+    "react-force-graph-2d": "^1.29.2"
+  },
+  "devDependencies": {
+    "@freelensapp/extensions": "^2.0.0",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/d3-force": "3.0.10",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "44.10.0",
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.3",
+    "mobx": "7.0.6",
+    "mobx-react": "10.0.2",
+    "playwright": "1.64.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sass-embedded": "1.105.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
   "keywords": [
-    "lens",
     "extension",
-    "k8slens",
-    "kubernetes",
     "freelensapp",
-    "extension",
     "lens",
     "openlens",
     "freelens",
     "resource",
     "map"
   ],
-  "files": [
-    "out/**/*"
-  ],
-  "updateSource": "github|npmjs",
-  "scripts": {
-    "biome": "corepack pnpm dlx @biomejs/biome@2.3.6",
-    "biome:check": "corepack pnpm biome check",
-    "biome:fix": "corepack pnpm biome check --fix",
-    "biome:migrate": "corepack pnpm biome migrate --write",
-    "prettier": "corepack pnpm dlx prettier@3.6.2",
-    "prettier:check": "corepack pnpm prettier --check .",
-    "prettier:fix": "corepack pnpm prettier --write .",
-    "trunk": "corepack pnpm dlx @trunkio/launcher@1.3.4",
-    "trunk:check": "corepack pnpm trunk check",
-    "trunk:check:all": "corepack pnpm trunk check --all",
-    "trunk:fix": "corepack pnpm trunk check --fix",
-    "trunk:fix:all": "corepack pnpm trunk check --fix --all",
-    "lint": "corepack pnpm lint:check",
-    "lint:check": "corepack pnpm \"/^(biome|prettier):check\\$/\"",
-    "lint:fix": "corepack pnpm \"/^(biome|prettier):fix\\$/\"",
-    "knip": "corepack pnpm dlx knip@5.70.0 --dependencies --no-gitignore",
-    "knip:check": "corepack pnpm \"/^knip:(development|production)\\$/\"",
-    "knip:development": "corepack pnpm knip",
-    "knip:production": "corepack pnpm knip --production --strict",
-    "type:check": "tsc --noEmit -p tsconfig.json --composite false",
-    "prebuild": "corepack pnpm type:check",
-    "build": "electron-vite build",
-    "build:production": "VITE_PRESERVE_MODULES=false electron-vite build",
-    "build:force": "electron-vite build",
-    "bump-version": "corepack pnpm version --no-commit-hooks --no-git-tag-version",
-    "pack:dev": "corepack pnpm bump-version prerelease && corepack pnpm build:force && corepack pnpm build && corepack pnpm clean:tgz && corepack pnpm pack && corepack pnpm dlx shx@0.4.0 ls \"$PWD/*.tgz\"",
-    "clean": "corepack pnpm clean:out",
-    "clean:dts": "corepack pnpm dlx shx@0.4.0 rm -f \"src/**/*.scss.d.ts\"",
-    "clean:node_modules": "corepack pnpm dlx shx@0.4.0 rm -rf node_modules",
-    "clean:out": "corepack pnpm dlx shx@0.4.0 rm -rf out",
-    "clean:tgz": "corepack pnpm dlx shx@0.4.0 rm -f \"*.tgz\"",
-    "clean:all": "corepack pnpm \"/^clean:(dts|node_modules|out|tgz)\\$/\"",
-    "postupdate": "corepack pnpm biome:migrate"
-  },
-  "contributes": {
-    "crds": [],
-    "cloudProviders": [],
-    "kubernetesDistros": []
-  },
-  "overrides": {
-    "react": "^17.0.2",
-    "@types/react": "^17.0.85"
-  },
-  "devDependencies": {
-    "@babel/plugin-proposal-decorators": "^7.28.0",
-    "@electron-toolkit/tsconfig": "^2.0.0",
-    "@vitejs/plugin-react": "^5.1.1",
-    "electron-vite": "^4.0.1",
-    "vite": "^7.3.2",
-    "vite-plugin-external": "^6.2.2",
-    "vite-plugin-sass-dts": "^1.3.35",
-    "@freelensapp/extensions": "^1.6.0",
-    "@freelensapp/utilities": "^1.6.0",
-    "@types/d3-force": "^3.0.10",
-    "@types/node": "^22.14.0",
-    "@types/react": "^17.0.85",
-    "@types/react-dom": "^17.0.26",
-    "d3-force": "^3.0.0",
-    "mobx": "^6.10.2",
-    "mobx-react": "^7.6.0",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2",
-    "react-force-graph-2d": "^1.27.1",
-    "sass": "^1.97.3",
-    "type-fest": "^2.19.0",
-    "typescript": "^5.8.2"
-  },
-  "packageManager": "pnpm@10.12.4+sha256.cadfd9e6c9fcc2cb76fe7c0779a5250b632898aea5f53d833a73690c77a778d9"
+  "packageManager": "pnpm@12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61"
 }

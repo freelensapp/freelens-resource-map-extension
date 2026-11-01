@@ -1,0 +1,259 @@
+/**
+ * Copyright (c) Freelens Authors. All rights reserved.
+ * Licensed under MIT License. See LICENSE in root directory for more information.
+ */
+
+// The maps in the details panels, opened with showDetails as the first views
+// after the kind cluster connects. The cluster frame opens on the host's
+// Cluster Overview, which loads the pods; the first drawer is a Service's,
+// whose map loads the Services, Ingresses, Secrets, ConfigMaps, claims and
+// controllers, which no host view has loaded yet.
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  appReady,
+  connectApp,
+  connectKindCluster,
+  countGraphInits,
+  disconnectKindCluster,
+  graphInitsPerElement,
+  installExtension,
+  mapOf,
+  nodeKey,
+  nodePoint,
+  openDetails,
+  podSelfLink,
+  selectNamespacesInStore,
+  settledNodes,
+  shownDetails,
+  testNamespaces,
+} from "./extension-helpers";
+
+import type { Frame } from "playwright";
+
+import type { AppSession, MapNode } from "./extension-helpers";
+
+const viewTimeout = { timeout: 60 * 1000 };
+
+const service = "/api/v1/namespaces/shop/services/web";
+const webDeployment = "/apis/apps/v1/namespaces/shop/deployments/web";
+const catalogDeployment = "/apis/apps/v1/namespaces/shop/deployments/catalog";
+const statefulSet = "/apis/apps/v1/namespaces/shop/statefulsets/db";
+const daemonSet = "/apis/apps/v1/namespaces/shop/daemonsets/agent";
+const ingress = "/apis/networking.k8s.io/v1/namespaces/shop/ingresses/storefront";
+// A Deployment of the namespace that the session leaves out of the selection.
+const stockDeployment = "/apis/apps/v1/namespaces/inventory/deployments/stock";
+
+// A node by its kind, namespace and the start of its name, for the pods, whose names end with a random suffix.
+const has = (nodes: MapNode[], kind: string, name: string, namespace = "shop") =>
+  nodes.some((node) => node.kind === kind && node.namespace === namespace && node.name.startsWith(name));
+
+describe.skipIf(!(await appReady({ cluster: true })))("details drawers tests", () => {
+  let session: AppSession | undefined;
+  let frame: Frame;
+
+  const mapOfDetails = async (selfLink: string) => {
+    const drawer = await openDetails(frame, selfLink);
+    const nodes = await settledNodes(frame);
+    const canvases = await mapOf(frame).locator("canvas").count();
+    // The error page of the boundary, whose class the CSS module names `_errorPage_<hash>`.
+    const errorPage = await drawer.locator('[class*="_errorPage_"]').count();
+    return { nodes, canvases, errorPage };
+  };
+
+  beforeAll(async () => {
+    session = await connectApp();
+    await installExtension(session);
+    await disconnectKindCluster(session);
+    frame = await connectKindCluster(session);
+    await countGraphInits(frame);
+    await selectNamespacesInStore(frame, testNamespaces);
+  }, 300 * 1000);
+
+  afterAll(async () => {
+    expect((await session?.close()) ?? []).toEqual([]);
+  });
+
+  it("draws the map of a Service as the first view of its stores", async () => {
+    const { nodes, canvases, errorPage } = await mapOfDetails(service);
+
+    expect(nodes.map(nodeKey)).toEqual(
+      expect.arrayContaining(["Service shop/web", "Deployment shop/web", "Ingress shop/storefront"]),
+    );
+    expect(has(nodes, "Pod", "web-")).toBe(true);
+    expect(canvases).toBe(1);
+    expect(errorPage).toBe(0);
+  });
+
+  it.each([
+    [
+      "a Deployment",
+      webDeployment,
+      [
+        ["Deployment", "web"],
+        ["Pod", "web-"],
+        ["Service", "web"],
+        ["ConfigMap", "web-config"],
+        ["Ingress", "storefront"],
+      ],
+    ],
+    [
+      "a StatefulSet",
+      statefulSet,
+      [
+        ["StatefulSet", "db"],
+        ["Pod", "db-0"],
+        ["Service", "db"],
+      ],
+    ],
+    [
+      "a DaemonSet",
+      daemonSet,
+      [
+        ["DaemonSet", "agent"],
+        ["Pod", "agent-"],
+      ],
+    ],
+    [
+      "an Ingress",
+      ingress,
+      [
+        ["Ingress", "storefront"],
+        ["Secret", "storefront-tls"],
+        ["Service", "web"],
+        ["Pod", "web-"],
+        ["Deployment", "web"],
+      ],
+    ],
+  ])("draws the map of %s", async (_kind, selfLink, expected) => {
+    const { nodes, canvases, errorPage } = await mapOfDetails(selfLink as string);
+
+    for (const [kind, name] of expected as string[][]) {
+      expect(has(nodes, kind, name), `${kind} ${name}`).toBe(true);
+    }
+    expect(canvases).toBe(1);
+    expect(errorPage).toBe(0);
+  });
+
+  it("draws the map of a pod", async () => {
+    const { nodes, canvases, errorPage } = await mapOfDetails(await podSelfLink(frame, "shop", "web-"));
+
+    for (const [kind, name] of [
+      ["Pod", "web-"],
+      ["Service", "web"],
+      ["Deployment", "web"],
+      ["ConfigMap", "web-config"],
+    ]) {
+      expect(has(nodes, kind, name), `${kind} ${name}`).toBe(true);
+    }
+    expect(canvases).toBe(1);
+    expect(errorPage).toBe(0);
+  });
+
+  it("draws the map of a Deployment of a namespace outside the selection, and adds none of its objects to the stores", async () => {
+    const drawer = await openDetails(frame, stockDeployment);
+
+    // The map lists the namespace, which the stores do not load, and draws its objects once the list is back.
+    await expect
+      .poll(async () => {
+        const nodes = await settledNodes(frame);
+        return [
+          ["Deployment", "stock"],
+          ["Pod", "stock-"],
+          ["Service", "stock"],
+          ["ConfigMap", "stock-config"],
+        ]
+          .filter(([kind, name]) => !has(nodes, kind, name, "inventory"))
+          .map(([kind, name]) => `${kind} ${name}`);
+      }, viewTimeout)
+      .toEqual([]);
+    expect(await mapOf(frame).locator("canvas").count()).toBe(1);
+    expect(await drawer.locator('[class*="_errorPage_"]').count()).toBe(0);
+    // No view of the host loads the Services and the ConfigMaps here, so whatever their stores hold comes from the map.
+    const held = await frame.evaluate(() => {
+      const api = globalThis.FreelensExtensionApi.Renderer?.K8sApi;
+      const objects: { kind: string; getNs(): string | undefined; getName(): string }[] = [
+        ...(api?.serviceStore.items ?? []),
+        ...(api?.configMapStore.items ?? []),
+      ];
+      return objects
+        .filter((object) => object.getNs() === "inventory")
+        .map((object) => `${object.kind} ${object.getName()}`);
+    });
+    expect(held).toEqual([]);
+  });
+
+  it("draws the map of a Deployment of a namespace selected after the stores loaded others", async () => {
+    // The stores of the Services and the ConfigMaps loaded the test namespaces with the first drawers, and no
+    // view of the host follows them: once inventory alone is selected, they hold none of its objects until a map
+    // loads them for the selection. The drawer closes first, so that the map mounts again.
+    await frame.evaluate(() => globalThis.FreelensExtensionApi.Renderer?.Navigation.hideDetails());
+    await expect.poll(() => shownDetails(frame), viewTimeout).toBe(null);
+    await selectNamespacesInStore(frame, ["inventory"]);
+
+    const drawer = await openDetails(frame, stockDeployment);
+
+    await expect
+      .poll(async () => {
+        const nodes = await settledNodes(frame);
+        return [
+          ["Deployment", "stock"],
+          ["Pod", "stock-"],
+          ["Service", "stock"],
+          ["ConfigMap", "stock-config"],
+        ]
+          .filter(([kind, name]) => !has(nodes, kind, name, "inventory"))
+          .map(([kind, name]) => `${kind} ${name}`);
+      }, viewTimeout)
+      .toEqual([]);
+    expect(await drawer.locator('[class*="_errorPage_"]').count()).toBe(0);
+    // The map loaded the stores for the selection, so they hold the objects of inventory now.
+    const held = await frame.evaluate(() => {
+      const api = globalThis.FreelensExtensionApi.Renderer?.K8sApi;
+      const objects: { kind: string; getNs(): string | undefined; getName(): string }[] = [
+        ...(api?.serviceStore.items ?? []),
+        ...(api?.configMapStore.items ?? []),
+      ];
+      return objects
+        .filter((object) => object.getNs() === "inventory")
+        .map((object) => `${object.kind} ${object.getName()}`)
+        .sort();
+    });
+    expect(held).toEqual(expect.arrayContaining(["ConfigMap stock-config", "Service stock"]));
+
+    await selectNamespacesInStore(frame, testNamespaces);
+  });
+
+  it("opens the object of a node clicked in a map, and stays open a second later", async () => {
+    const { nodes } = await mapOfDetails(service);
+    const deployment = nodes.find((node) => nodeKey(node) === "Deployment shop/web");
+    if (!deployment) throw new Error("No node of the Deployment web");
+    const point = await nodePoint(frame, deployment);
+
+    await frame.page().mouse.click(point.x, point.y);
+
+    await expect.poll(() => shownDetails(frame), viewTimeout).toBe(webDeployment);
+    await frame.waitForTimeout(1000);
+    expect(shownDetails(frame)).toBe(webDeployment);
+    expect(await frame.locator(".Drawer.KubeObjectDetails").isVisible()).toBe(true);
+  });
+
+  it("opens a Helm release on its route from the map of its Deployment", async () => {
+    const { nodes } = await mapOfDetails(catalogDeployment);
+    const release = nodes.find((node) => nodeKey(node) === "HelmRelease shop/catalog");
+    if (!release) throw new Error("No node of the Helm release catalog");
+    const point = await nodePoint(frame, release);
+
+    await frame.page().mouse.click(point.x, point.y);
+
+    await expect.poll(() => new URL(frame.url()).pathname, viewTimeout).toBe("/helm/releases/shop/catalog");
+  });
+
+  it("set up the graph of every map once", async () => {
+    expect(await graphInitsPerElement(frame)).toBe(1);
+  });
+
+  it("logs no error", () => {
+    expect(session?.errors()).toEqual([]);
+  });
+});

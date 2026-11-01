@@ -1,84 +1,53 @@
-// import React from "react"
 import { Renderer } from "@freelensapp/extensions";
-import { KubeForceChart, KubeResourcePage } from "./components";
+import { KubeResourcePage } from "./components";
+import { withDetailsErrorBoundary, withPageErrorBoundary } from "./components/error-boundary";
 import { KubeControllerChart } from "./components/KubeControllerChart";
 import { KubeIngressChart } from "./components/KubeIngressChart";
 import { KubePodChart } from "./components/KubePodChart";
 import { KubeServiceChart } from "./components/KubeServiceChart";
+import { WorkloadsOverviewItem } from "./components/workloads-overview-item";
 
 export default class KubeResourceMapRenderer extends Renderer.LensExtension {
-  kubeObjectDetailItems = [
-    {
-      kind: "Deployment",
-      apiVersions: ["apps/v1"],
+  kubeObjectDetailItems: Renderer.LensExtension["kubeObjectDetailItems"] = [
+    Renderer.K8sApi.detailsFor(Renderer.K8sApi.Deployment, {
       priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<Renderer.K8sApi.Deployment>) => (
-          <KubeControllerChart {...props} />
-        ),
-      },
-    },
-    {
-      kind: "DaemonSet",
-      apiVersions: ["apps/v1"],
+      Details: (props) => <KubeControllerChart {...props} />,
+    }),
+    Renderer.K8sApi.detailsFor(Renderer.K8sApi.DaemonSet, {
       priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<Renderer.K8sApi.DaemonSet>) => (
-          <KubeControllerChart {...props} />
-        ),
-      },
-    },
-    {
-      kind: "StatefulSet",
-      apiVersions: ["apps/v1"],
+      Details: (props) => <KubeControllerChart {...props} />,
+    }),
+    Renderer.K8sApi.detailsFor(Renderer.K8sApi.StatefulSet, {
       priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<Renderer.K8sApi.StatefulSet>) => (
-          <KubeControllerChart {...props} />
-        ),
-      },
-    },
-    {
-      kind: "Pod",
-      apiVersions: ["v1"],
+      Details: (props) => <KubeControllerChart {...props} />,
+    }),
+    Renderer.K8sApi.detailsFor(Renderer.K8sApi.Pod, {
       priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<Renderer.K8sApi.Pod>) => <KubePodChart {...props} />,
-      },
-    },
-    {
-      kind: "Service",
-      apiVersions: ["v1"],
+      Details: (props) => <KubePodChart {...props} />,
+    }),
+    Renderer.K8sApi.detailsFor(Renderer.K8sApi.Service, {
       priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<Renderer.K8sApi.Service>) => (
-          <KubeServiceChart {...props} />
-        ),
-      },
-    },
-    {
-      kind: "Ingress",
-      apiVersions: ["networking.k8s.io/v1"],
+      Details: (props) => <KubeServiceChart {...props} />,
+    }),
+    Renderer.K8sApi.detailsFor(Renderer.K8sApi.Ingress, {
+      apiVersions: ["networking.k8s.io/v1", "extensions/v1beta1"],
       priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<Renderer.K8sApi.Pod>) => (
-          <KubeIngressChart {...props} />
-        ),
-      },
-    },
-  ];
+      Details: (props) => <KubeIngressChart {...props} />,
+    }),
+  ].map((registration) => withDetailsErrorBoundary(this, registration));
 
-  clusterPages = [
+  clusterPages: Renderer.LensExtension["clusterPages"] = [
     {
       id: "resource-map",
       components: {
         Page: () => <KubeResourcePage />,
       },
     },
-  ];
+  ].map((registration) => withPageErrorBoundary(this, registration));
 
   clusterPageMenus = [
     {
+      id: "resource-map",
       target: { pageId: "resource-map" },
       title: "Resource Map",
       components: {
@@ -87,22 +56,11 @@ export default class KubeResourceMapRenderer extends Renderer.LensExtension {
     },
   ];
 
-  kubeWorkloadsOverviewItems = [
+  kubeWorkloadsOverviewItems: Renderer.LensExtension["kubeWorkloadsOverviewItems"] = [
     {
       priority: 25,
       components: {
-        Details: () => {
-          return (
-            <div className="ResourceMapOverviewDetail">
-              <div className="header flex gaps align-center">
-                <h5 className="box grow">Resources</h5>
-              </div>
-              <div className="content">
-                <KubeForceChart height={480} />
-              </div>
-            </div>
-          );
-        },
+        Details: () => <WorkloadsOverviewItem extension={this} />,
       },
     },
   ];

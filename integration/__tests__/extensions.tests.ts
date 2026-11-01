@@ -1,79 +1,29 @@
 /**
- * Copyright (c) OpenLens Authors. All rights reserved.
+ * Copyright (c) Freelens Authors. All rights reserved.
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-import { expect } from "@jest/globals";
-import * as utils from "../helpers/utils";
+// Installs this checkout in place in Freelens dev, uninstalling whatever
+// installation of the extension the app had.
 
-import type { ConsoleMessage, ElectronApplication, Page } from "playwright";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { appReady, connectApp, installExtension } from "./extension-helpers";
 
-describe("extensions page tests", () => {
-  let window: Page;
-  let cleanup: undefined | (() => Promise<void>);
+import type { AppSession } from "./extension-helpers";
 
-  const logger = (msg: ConsoleMessage) => console.log(msg.text());
+describe.skipIf(!(await appReady({ cluster: false })))("extensions page tests", () => {
+  let session: AppSession | undefined;
 
   beforeAll(async () => {
-    let app: ElectronApplication;
+    session = await connectApp();
+    await installExtension(session, { reinstall: true });
+  }, 120 * 1000);
 
-    ({ window, cleanup, app } = await utils.start());
-    window.on("console", logger);
-    console.log("await utils.clickWelcomeButton");
-    await utils.clickWelcomeButton(window);
+  afterAll(async () => {
+    expect((await session?.close()) ?? []).toEqual([]);
+  });
 
-    // Navigate to extensions page
-    console.log("await app.evaluate");
-    await app.evaluate(async ({ app }) => {
-      await app.applicationMenu
-        ?.getMenuItemById(process.platform === "darwin" ? "mac" : "file")
-        ?.submenu?.getMenuItemById("navigate-to-extensions")
-        ?.click();
-    });
-
-    // Trigger extension install
-    const textbox = window.getByPlaceholder("Name or file path or URL");
-    console.log("await textbox.fill");
-    await textbox.fill(process.env.EXTENSION_PATH || "@freelensapp/resource-map-extension");
-    const install_button_selector = 'button[class*="Button install-module__button--"]';
-    console.log("await window.click [data-waiting=false]");
-    await window.click(install_button_selector.concat("[data-waiting=false]"));
-
-    // Expect extension to be listed in installed list and enabled
-    console.log('await window.waitForSelector div[class*="installed-extensions-module__extensionName--"]');
-    const installedExtensionName = await (
-      await window.waitForSelector('div[class*="installed-extensions-module__extensionName--"]')
-    ).textContent();
-    expect(installedExtensionName).toBe("@freelensapp/resource-map-extension");
-    const installedExtensionState = await (
-      await window.waitForSelector('div[class*="installed-extensions-module__enabled--"]')
-    ).textContent();
-    expect(installedExtensionState).toBe("Enabled");
-    console.log("closing all notifications");
-    await window.waitForSelector('i[data-testid*="close-notification-for-notification_"]');
-    const notificationCloseButtons = await window.$$('i[data-testid*="close-notification-for-notification_"]');
-    for (const btn of notificationCloseButtons) {
-      await btn.click();
-    }
-    await window.waitForSelector('i[data-testid*="close-notification-for-notification_"]', { state: "hidden" });
-    console.log('await window.click div[class*="close-button-module__closeButton--"][aria-label="Close"]');
-    await window.click('div[class*="close-button-module__closeButton--"][aria-label="Close"]');
-  }, 60 * 1000);
-
-  afterAll(
-    async () => {
-      // Cannot log after tests are done.
-      window.off("console", logger);
-      await cleanup?.();
-    },
-    10 * 60 * 1000,
-  );
-
-  it(
-    "installs an extension",
-    async () => {
-      // Nothing, as only beforeAll is called
-    },
-    100 * 60 * 1000,
-  );
+  it("installs the extension", () => {
+    expect(session?.errors()).toEqual([]);
+  });
 });

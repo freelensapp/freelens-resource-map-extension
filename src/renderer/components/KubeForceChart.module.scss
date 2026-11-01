@@ -1,0 +1,64 @@
+.kubeForceChart {
+  position: relative;
+  width: 100%;
+  height: 100%;
+
+  // the canvas container of force-graph, a third-party class, with the rules
+  // of the stylesheet that force-graph adds to the document
+  :global(.force-graph-container) {
+    background-color: var(--secondaryBackground);
+
+    canvas {
+      display: block;
+      user-select: none;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :global(.clickable) {
+      cursor: pointer;
+    }
+
+    :global(.grabbable) {
+      cursor: grab;
+
+      &:active {
+        cursor: grabbing;
+      }
+    }
+  }
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.noResources {
+  margin: 200px auto;
+  color: var(--textColorSecondary);
+}
+
+// the map of a details panel, as wide as the panel; the content of the
+// drawer is a flex column, where a map that shrinks would lose its height
+.details {
+  flex-shrink: 0;
+  height: 400px;
+}
+
+// the list of the nodes on the canvas, for assistive technology and the
+// integration tests: in the page, out of sight
+.nodeList {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

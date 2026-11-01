@@ -1,0 +1,249 @@
+# The test objects of the sessions. The map reads their specs, so the pods run
+# a pause container and no ingress controller is needed.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+  namespace: shop
+data:
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: registry.k8s.io/pause:3.10
+        envFrom:
+        - configMapRef:
+            name: web-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: shop
+spec:
+  selector:
+    app: web
+  ports:
+  - port: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+  namespace: billing
+data:
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: billing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: registry.k8s.io/pause:3.10
+        envFrom:
+        - configMapRef:
+            name: web-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: billing
+spec:
+  selector:
+    app: web
+  ports:
+  - port: 80
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: storefront-tls
+  namespace: shop
+type: kubernetes.io/tls
+stringData:
+  tls.crt: placeholder
+  tls.key: placeholder
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: storefront
+  namespace: shop
+spec:
+  tls:
+  - hosts:
+    - shop.example.com
+    secretName: storefront-tls
+  rules:
+  - host: shop.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web
+            port:
+              number: 80
+---
+# No rules, a default backend only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: landing
+  namespace: shop
+spec:
+  defaultBackend:
+    service:
+      name: web
+      port:
+        number: 80
+---
+# A rule with a host and no http.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: redirect
+  namespace: shop
+spec:
+  rules:
+  - host: old.example.com
+---
+# A resource backend, which names no Service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: assets
+  namespace: shop
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /static
+        pathType: Prefix
+        backend:
+          resource:
+            apiGroup: k8s.example.com
+            kind: Bucket
+            name: assets
+---
+# A StatefulSet, with the headless Service that names its pods, and a
+# DaemonSet, for the details maps of the six kinds.
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: shop
+spec:
+  clusterIP: None
+  selector:
+    app: db
+  ports:
+  - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  namespace: shop
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+      - name: db
+        image: registry.k8s.io/pause:3.10
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: agent
+  namespace: shop
+spec:
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      containers:
+      - name: agent
+        image: registry.k8s.io/pause:3.10
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stock-config
+  namespace: inventory
+data:
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock
+  namespace: inventory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stock
+  template:
+    metadata:
+      labels:
+        app: stock
+    spec:
+      containers:
+      - name: stock
+        image: registry.k8s.io/pause:3.10
+        envFrom:
+        - configMapRef:
+            name: stock-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stock
+  namespace: inventory
+spec:
+  selector:
+    app: stock
+  ports:
+  - port: 80

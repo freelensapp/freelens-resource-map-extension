@@ -1,8 +1,6 @@
-import "./KubeResourceChartLegend.scss";
 import React from "react";
-import { KubeForceChart } from "./KubeForceChart";
-
-// import { observer } from "mobx-react";
+import { config } from "./helpers/config";
+import styles from "./KubeResourceChartLegend.module.scss";
 
 interface Props {
   iconSize?: number;
@@ -16,15 +14,14 @@ export class KubeResourceChartLegend extends React.Component<Props> {
   render() {
     const { iconSize } = this.props;
     return (
-      <div className="KubeResourceChartLegend flex column">
-        <p className="title">Legend:</p>
-        {Object.entries(KubeForceChart.config).map(([kind, configItem]) => {
-          const resource = kind;
-          const style = { "--color": configItem.color, padding: "7px 0" } as React.CSSProperties;
+      <div className={styles.legend}>
+        <p className={styles.title}>Legend:</p>
+        {Object.entries(config).map(([kind, configItem]) => {
+          const style = { "--color": configItem.color } as React.CSSProperties;
           return (
-            <div key={kind} className="resource flex gaps align-center" style={style}>
-              <img className="resource-icon" src={configItem.icon} width={iconSize} height={iconSize} alt={kind} />
-              <span className="resource-kind">{resource}</span>
+            <div key={kind} className={styles.resource} style={style}>
+              <img className={styles.icon} src={configItem.icon} width={iconSize} height={iconSize} alt="" />
+              <span className={styles.kind}>{configItem.label}</span>
             </div>
           );
         })}

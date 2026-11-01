@@ -1,5 +1,6 @@
-import { Common, Renderer } from "@freelensapp/extensions";
+import { Renderer } from "@freelensapp/extensions";
 import React from "react";
+import styles from "./tooltip.module.scss";
 
 export interface StatefulsetTooltipProps {
   obj: Renderer.K8sApi.StatefulSet;
@@ -9,7 +10,7 @@ export class StatefulsetTooltip extends React.Component<StatefulsetTooltipProps>
   render() {
     const obj = this.props.obj;
     return (
-      <div className="KubeResourceChartTooltip flex column">
+      <div className={styles.tooltip}>
         <div>
           <b>
             {obj.kind} - {obj.getName()}
@@ -30,17 +31,5 @@ export class StatefulsetTooltip extends React.Component<StatefulsetTooltipProps>
         <Renderer.Component.DrawerItem name="Replicas">{obj.getReplicas()}</Renderer.Component.DrawerItem>
       </div>
     );
-  }
-
-  renderContainersStatus(pod: Renderer.K8sApi.Pod) {
-    return pod.getContainerStatuses().map((containerStatus) => {
-      const { name, state, ready } = containerStatus;
-
-      return (
-        <div key={name}>
-          <Renderer.Component.StatusBrick className={Common.Util.cssNames(state, { ready })} /> {name}
-        </div>
-      );
-    });
   }
 }

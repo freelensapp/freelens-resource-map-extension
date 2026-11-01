@@ -1,0 +1,437 @@
+// @vitest-environment jsdom
+
+import { Common, Renderer } from "@freelensapp/extensions";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { compareShallow, getObserverTree, observable, reaction, runInAction } from "mobx";
+import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { kubeObject, pod, secret } from "../../../test/kube-objects";
+import { KubeForceChart } from "./KubeForceChart";
+
+import type { IObservableArray } from "mobx";
+
+import type { ChartDataSeries, LinkObject } from "./helpers/types";
+
+type KubeObject = Renderer.K8sApi.KubeObject;
+
+// A store of the host, as far as the map uses it: its items in an observable
+// array, its loads and its watches. As in the host, a watch with an aborted
+// controller does not start, and the function a watch returns aborts it.
+interface FakeStore {
+  api: { kind: string };
+  items: IObservableArray<KubeObject>;
+  loads: number;
+  watches: number;
+  // The handler of a failed list that the last watch got, which the host calls when a watch lists again.
+  watchFailure?: (error: unknown) => void;
+  // When set, a load waits for it, and then fails with it when it is an error.
+  pending?: Promise<Error | undefined>;
+  loadAll(params?: Renderer.K8sApi.KubeObjectStoreLoadAllParams): Promise<KubeObject[] | undefined>;
+  subscribe(params?: Renderer.K8sApi.KubeObjectStoreSubscribeParams): () => void;
+  getChildPods(): Renderer.K8sApi.Pod[];
+}
+
+function fakeStore(kind: string): FakeStore {
+  const store: FakeStore = {
+    api: { kind },
+    items: observable.array<KubeObject>([], { deep: false }),
+    loads: 0,
+    watches: 0,
+    async loadAll(params) {
+      store.loads++;
+      const failure = await store.pending;
+      if (params?.reqInit?.signal?.aborted) return undefined;
+      if (failure) {
+        params?.onLoadFailure?.(failure);
+        return [];
+      }
+      return store.items.slice();
+    },
+    subscribe(params) {
+      const controller = params?.abortController ?? new AbortController();
+      if (controller.signal.aborted) return () => {};
+      store.watchFailure = params?.onLoadFailure;
+      store.watches++;
+      controller.signal.addEventListener("abort", () => store.watches--, { once: true });
+      return () => controller.abort();
+    },
+    getChildPods: () => [],
+  };
+  return store;
+}
+
+// jsdom has no ResizeObserver: this one hands the sizes that a test sets to
+// the callback of the observer.
+class FakeResizeObserver {
+  static last?: FakeResizeObserver;
+  element?: Element;
+  disconnected = false;
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    FakeResizeObserver.last = this;
+  }
+
+  observe(element: Element) {
+    this.element = element;
+  }
+
+  disconnect() {
+    this.disconnected = true;
+  }
+
+  resize(width: number, height: number) {
+    this.callback([{ contentRect: { width, height } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+  }
+}
+
+interface GraphProps {
+  graphData: { nodes: ChartDataSeries[]; links: LinkObject[] };
+  width: number;
+  height: number;
+  onNodeHover(node: ChartDataSeries | null, previous: ChartDataSeries | null): void;
+  onEngineStop(): void;
+  onNodeClick(node: ChartDataSeries, event: MouseEvent): void;
+  ref?: { current: unknown };
+}
+
+// jsdom has no canvas: the graph is replaced by a component that keeps the
+// props the map hands to it and puts methods that record their calls in its
+// ref, as the graph does when it mounts.
+const graph = vi.hoisted(() => ({
+  props: undefined as GraphProps | undefined,
+  methods: {} as Record<string, (...args: never[]) => unknown>,
+}));
+vi.mock("react-force-graph-2d", () => ({
+  default: (props: GraphProps) => {
+    graph.props = props;
+    if (props.ref && props.ref.current !== graph.methods) {
+      props.ref.current = graph.methods;
+    }
+    return <canvas />;
+  },
+}));
+
+// The tooltips of the kinds render the host's components, which a unit test
+// does not have. The stand-ins of the models are no instances of the host's
+// classes, so every node gets the default tooltip.
+vi.mock("./tooltips/DefaultTooltip", () => ({
+  DefaultTooltip: ({ obj }: { obj: KubeObject }) => <p>default {obj.getName()}</p>,
+}));
+
+// The host's stores, its namespace store, whose onContextChange is a reaction
+// to the selection as in the host, and the kinds that the user may list.
+const host = vi.hoisted(() => ({
+  stores: {} as Record<string, FakeStore>,
+  namespaceStore: {} as object,
+  listable: new Set<string>(),
+}));
+vi.mock("./helpers/stores", () => ({
+  getMapStores: () => host.stores,
+  getNamespaceStore: () => host.namespaceStore,
+  canListMapStore: (key: string) => host.listable.has(key),
+}));
+vi.mock("./helpers/theme-colors", () => ({
+  getCanvasColors: () => ({ background: "#1e2124", text: "#ffffff" }),
+}));
+
+const kinds = {
+  pods: "Pod",
+  deployments: "Deployment",
+  statefulSets: "StatefulSet",
+  daemonSets: "DaemonSet",
+  services: "Service",
+  ingresses: "Ingress",
+  pvcs: "PersistentVolumeClaim",
+  configMaps: "ConfigMap",
+  secrets: "Secret",
+};
+
+let selection: IObservableArray<string>;
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  FakeResizeObserver.last = undefined;
+  host.stores = Object.fromEntries(Object.entries(kinds).map(([key, kind]) => [key, fakeStore(kind)]));
+  host.listable = new Set(Object.keys(kinds));
+  selection = observable.array(["shop"]);
+  host.namespaceStore = {
+    onContextChange: (callback: (namespaces: string[]) => void, opts: { fireImmediately?: boolean } = {}) =>
+      reaction(() => selection.slice(), callback, { fireImmediately: opts.fireImmediately, equals: compareShallow }),
+  };
+  const force = { strength: vi.fn(() => force), distance: vi.fn(() => force) };
+  graph.props = undefined;
+  graph.methods = {
+    zoom: vi.fn(),
+    zoomToFit: vi.fn(),
+    d3Force: vi.fn(() => force),
+    graph2ScreenCoords: vi.fn((x: number, y: number) => ({ x: x + 400, y: y + 300 })),
+  };
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
+
+const drawnIds = () => graph.props?.graphData.nodes.map((node) => node.id).sort();
+const stores = () => Object.values(host.stores);
+
+describe("KubeForceChart", () => {
+  it("draws the selected namespaces when a store changes, and nothing of the others", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop"), pod("ledger-1", "billing")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    act(() => {
+      runInAction(() => host.stores.pods.items.push(pod("web-2", "shop")));
+    });
+
+    expect(drawnIds()).toEqual(["Pod/shop/web-1", "Pod/shop/web-2"]);
+  });
+
+  it("draws the namespaces of a new selection", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop"), pod("ledger-1", "billing")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    act(() => {
+      selection.replace(["billing"]);
+    });
+
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/billing/ledger-1"]));
+  });
+
+  it("follows the selection with one reaction through rebuilds and changes, and with none after the unmount", async () => {
+    const observers = () => getObserverTree(selection).observers?.length ?? 0;
+    host.stores.pods.items.replace([pod("web-1", "shop"), pod("ledger-1", "billing")]);
+    const { unmount } = render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    act(() => {
+      runInAction(() => host.stores.pods.items.push(pod("web-2", "shop")));
+    });
+    act(() => {
+      selection.replace(["billing"]);
+    });
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/billing/ledger-1"]));
+    act(() => {
+      runInAction(() => host.stores.pods.items.push(pod("ledger-2", "billing")));
+    });
+
+    expect(drawnIds()).toEqual(["Pod/billing/ledger-1", "Pod/billing/ledger-2"]);
+    expect(observers()).toBe(1);
+
+    unmount();
+
+    expect(observers()).toBe(0);
+  });
+
+  it("shows the tooltip of the hovered node, and hides it when the pointer leaves", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    const tooltip = screen.getByTestId("resource-map-tooltip");
+    expect(tooltip.style.display).toBe("none");
+
+    act(() => graph.props?.onNodeHover(graph.props.graphData.nodes[0], null));
+
+    expect(tooltip.textContent).toBe("default web-1");
+    expect(tooltip.style.display).toBe("block");
+
+    act(() => graph.props?.onNodeHover(null, null));
+
+    expect(tooltip.style.display).toBe("none");
+  });
+
+  it("gives the graph the size of its container, and the new size when the container resizes", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    const { container, unmount } = render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    const observer = FakeResizeObserver.last;
+    expect(observer?.element).toBe(container.querySelector("[data-testid=resource-map-nodes]")?.parentElement);
+
+    act(() => observer?.resize(812.5, 480));
+
+    expect(graph.props).toMatchObject({ width: 812, height: 480 });
+
+    act(() => observer?.resize(1024, 600));
+
+    expect(graph.props).toMatchObject({ width: 1024, height: 600 });
+
+    unmount();
+
+    expect(observer?.disconnected).toBe(true);
+  });
+
+  it("opens the details of the object of a node when the node is clicked", async () => {
+    const web1 = pod("web-1", "shop");
+    Object.assign(web1, { selfLink: "/api/v1/namespaces/shop/pods/web-1" });
+    host.stores.pods.items.replace([web1]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    act(() => graph.props?.onNodeClick(graph.props.graphData.nodes[0], new MouseEvent("click")));
+
+    expect(Renderer.Navigation.showDetails).toHaveBeenCalledWith("/api/v1/namespaces/shop/pods/web-1");
+    expect(Renderer.Navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it("says that there is nothing to draw when the stores hold no object but config maps", async () => {
+    host.stores.configMaps.items.replace([kubeObject("ConfigMap", { name: "web-config", namespace: "shop" })]);
+    render(<KubeForceChart />);
+
+    expect(await screen.findByText("No visualizable resources found in this namespace.")).toBeDefined();
+    expect(graph.props).toBeUndefined();
+  });
+
+  it("opens a Helm release on its route when its node is clicked", async () => {
+    host.stores.secrets.items.replace([
+      secret("sh.helm.release.v1.storefront.v1", "shop", "helm.sh/release.v1", { name: "storefront" }),
+    ]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toContain("HelmRelease/shop/storefront"));
+    const release = graph.props?.graphData.nodes.find((node) => node.kind === "HelmRelease");
+
+    act(() => release && graph.props?.onNodeClick(release, new MouseEvent("click")));
+
+    expect(Renderer.Navigation.navigate).toHaveBeenCalledWith("/helm/releases/shop/storefront");
+  });
+
+  it("watches each store once under React.StrictMode, and stops every watch when it unmounts", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    const { unmount } = render(
+      <React.StrictMode>
+        <KubeForceChart />
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    expect(stores().map((store) => store.watches)).toEqual(stores().map(() => 1));
+
+    unmount();
+
+    expect(stores().map((store) => store.watches)).toEqual(stores().map(() => 0));
+  });
+
+  it("writes nothing and watches nothing for a load that comes back after the unmount", async () => {
+    let release = () => {};
+    host.stores.pods.pending = new Promise((resolve) => {
+      release = () => resolve(undefined);
+    });
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    const { unmount } = render(<KubeForceChart />);
+    await waitFor(() => expect(host.stores.pods.loads).toBe(1));
+
+    unmount();
+    release();
+    await act(async () => {
+      await host.stores.pods.pending;
+    });
+
+    expect(stores().map((store) => store.watches)).toEqual(stores().map(() => 0));
+    expect(host.stores.deployments.loads).toBe(0);
+    expect(graph.props).toBeUndefined();
+  });
+
+  it("neither loads nor watches nor draws a kind that the user cannot list", async () => {
+    host.listable.delete("secrets");
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    host.stores.secrets.items.replace([secret("db-credentials", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    expect(host.stores.secrets.loads).toBe(0);
+    expect(host.stores.secrets.watches).toBe(0);
+    expect(host.stores.pods.watches).toBe(1);
+  });
+
+  it("logs a list that fails as a warning, and draws the other kinds", async () => {
+    host.stores.secrets.pending = Promise.resolve(new Error("Failed to load api/v1/secrets"));
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    expect(Common.logger.warn).toHaveBeenCalledWith(
+      "[@freelensapp/resource-map-extension]: cannot list the Secret objects",
+      new Error("Failed to load api/v1/secrets"),
+    );
+    expect(Common.logger.error).not.toHaveBeenCalled();
+  });
+
+  it("logs a list that a watch sends again and that fails as a warning", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    host.stores.configMaps.watchFailure?.(new Error("Failed to load api/v1/configmaps"));
+
+    expect(Common.logger.warn).toHaveBeenCalledWith(
+      "[@freelensapp/resource-map-extension]: cannot list the ConfigMap objects",
+      new Error("Failed to load api/v1/configmaps"),
+    );
+  });
+
+  it("sets its forces on the graph once the graph has mounted", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    expect(graph.methods.d3Force).toHaveBeenCalledWith("charge", expect.any(Function));
+    expect(graph.methods.d3Force).toHaveBeenCalledWith("collide", expect.any(Function));
+    expect(graph.methods.d3Force).toHaveBeenCalledWith("center", expect.any(Function));
+  });
+
+  it("marks itself settled, with the points of its nodes, when the graph stops, and not when its data changes", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    const { container } = render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    const map = () => container.querySelector("[data-settled]");
+    expect(map()).toBeNull();
+
+    act(() => graph.props?.onEngineStop());
+
+    expect(map()).not.toBeNull();
+    const item = screen.getByTestId("resource-map-nodes").querySelector("li");
+    expect(item?.dataset).toMatchObject({ kind: "Pod", namespace: "shop", name: "web-1", x: "400", y: "300" });
+
+    act(() => {
+      runInAction(() => host.stores.pods.items.push(pod("web-2", "shop")));
+    });
+
+    expect(map()).toBeNull();
+    expect(screen.getByTestId("resource-map-nodes").children).toHaveLength(0);
+  });
+
+  it("refreshes in place the node of an object that its store replaces, as the host does for a change of the object", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    const data = graph.props?.graphData;
+    const failed = pod("web-1", "shop", { status: "Failed" });
+
+    // The host replaces the object of a watch event where it is: the array keeps its length.
+    act(() => runInAction(() => host.stores.pods.items.splice(0, 1, failed)));
+
+    expect(graph.props?.graphData).toBe(data);
+    const node = graph.props?.graphData.nodes.find((candidate) => candidate.id === "Pod/shop/web-1");
+    expect(node?.object).toBe(failed);
+    expect(node?.color).toBe("#ce3933");
+  });
+
+  it("takes the points of its nodes again when its container resizes, as the graph keeps the center of its view", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+    act(() => FakeResizeObserver.last?.resize(800, 600));
+    act(() => graph.props?.onEngineStop());
+    const item = () => screen.getByTestId("resource-map-nodes").querySelector("li");
+    expect(item()?.dataset).toMatchObject({ x: "400", y: "300" });
+
+    // On a canvas 200 px narrower and 100 px lower, the center of the view moves 100 px left and 50 px up.
+    graph.methods.graph2ScreenCoords = vi.fn((x: number, y: number) => ({ x: x + 300, y: y + 250 }));
+    act(() => FakeResizeObserver.last?.resize(600, 500));
+
+    expect(item()?.dataset).toMatchObject({ x: "300", y: "250" });
+  });
+});

@@ -1,56 +1,17 @@
-import { Renderer } from "@freelensapp/extensions";
-// import { observer } from "mobx-react";
+import { buildPodMap } from "./helpers/details-graph";
 import { KubeResourceChart } from "./KubeResourceChart";
 
-export class KubePodChart extends KubeResourceChart {
-  registerStores() {
-    this.kubeObjectStores = [
-      this.podsStore,
-      this.serviceStore,
-      this.ingressStore,
-      this.pvcStore,
-      this.configMapStore,
-      this.secretStore,
-      this.deploymentStore,
-      this.daemonsetStore,
-      this.statefulsetStore,
-    ];
-  }
+import type { Renderer } from "@freelensapp/extensions";
 
-  generateChartDataSeries = () => {
-    const nodes = [...this.nodes];
-    const links = [...this.links];
+import type { DetailsGraph, DetailsGraphObjects } from "./helpers/details-graph";
 
-    this.generatePodNode();
-    this.generateIngresses();
-
-    if (nodes.length != this.nodes.length || links.length != this.links.length) {
-      // TODO: Improve the logic
-      this.updateState(this.nodes, this.links);
-    }
-  };
-
-  protected generatePodNode() {
-    const { object: pod } = this.props;
-
-    this.getPodNode(pod as Renderer.K8sApi.Pod);
-    this.generateServices([pod as Renderer.K8sApi.Pod]);
-
-    const controller = this.getControllerObject(pod as Renderer.K8sApi.Pod);
-
-    if (controller) {
-      this.getControllerChartNode(controller, [pod as Renderer.K8sApi.Pod]);
-    }
-  }
-
-  getControllerObject(pod: Renderer.K8sApi.Pod) {
-    if (pod.getOwnerRefs()[0]?.kind == "StatefulSet") {
-      return this.statefulsetStore.getByName(pod.getOwnerRefs()[0].name, pod.getNs());
-    } else if (pod.getOwnerRefs()[0]?.kind == "DaemonSet") {
-      return this.daemonsetStore.getByName(pod.getOwnerRefs()[0].name, pod.getNs());
-    }
-    return this.deploymentStore.items.find((deployment) =>
-      deployment.getSelectors().every((label) => pod.getLabels().includes(label)),
-    );
+/**
+ * The map of a pod: its secrets, config maps and claims, the Services that
+ * select it, its controller with its Helm release, and the first Ingress in
+ * front of those Services, which also takes the links of the later ones.
+ */
+export class KubePodChart extends KubeResourceChart<Renderer.K8sApi.Pod> {
+  protected buildGraph(objects: DetailsGraphObjects, previous: DetailsGraph) {
+    return buildPodMap(this.props.object, objects, previous);
   }
 }

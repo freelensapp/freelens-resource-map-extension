@@ -1,5 +1,6 @@
 import { Common, Renderer } from "@freelensapp/extensions";
 import React from "react";
+import styles from "./tooltip.module.scss";
 
 export interface PodTooltipProps {
   obj: Renderer.K8sApi.Pod;
@@ -9,7 +10,7 @@ export class PodTooltip extends React.Component<PodTooltipProps> {
   render() {
     const obj = this.props.obj;
     return (
-      <div className="KubeResourceChartTooltip flex column">
+      <div className={styles.tooltip}>
         <div>
           <b>
             {obj.kind} - {obj.getName()}
