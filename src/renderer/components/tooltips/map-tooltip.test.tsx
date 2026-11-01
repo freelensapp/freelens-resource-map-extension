@@ -148,4 +148,43 @@ describe("MapTooltip", () => {
     expect(tooltip.style.left).toBe("22px");
     expect(tooltip.style.top).toBe("22px");
   });
+
+  it("places itself again for a node that it shows after the last move of the pointer", () => {
+    const tooltipRef = React.createRef<MapTooltip>();
+    const view = (object?: KubeObject) => (
+      <div data-testid="map" onMouseMove={(event) => tooltipRef.current?.follow(event)}>
+        <MapTooltip ref={tooltipRef} object={object} />
+      </div>
+    );
+    const { rerender } = render(view());
+    const map = screen.getByTestId("map");
+    const tooltip = screen.getByTestId("resource-map-tooltip");
+    // Hidden, the tooltip has no size; with the content of a node, 300 by 120 px.
+    const size = { width: 0, height: 0 };
+    Object.defineProperties(map, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
+    Object.defineProperties(tooltip, {
+      offsetWidth: { get: () => size.width },
+      offsetHeight: { get: () => size.height },
+    });
+    vi.spyOn(map, "getBoundingClientRect").mockReturnValue({
+      x: 40,
+      y: 30,
+      left: 40,
+      top: 30,
+      right: 840,
+      bottom: 630,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+    // The move that reaches a node near the corner, before the graph reports the node.
+    fireEvent.mouseMove(map, { clientX: 740, clientY: 530 });
+    expect(tooltip.style.left).toBe("712px");
+
+    Object.assign(size, { width: 300, height: 120 });
+    rerender(view(new Renderer.K8sApi.Pod({ apiVersion: "v1", kind: "Pod", metadata: metadata("web-1") })));
+
+    expect(tooltip.style.left).toBe("388px");
+    expect(tooltip.style.top).toBe("368px");
+  });
 });

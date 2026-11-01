@@ -50,14 +50,27 @@ export interface MapTooltipProps {
  */
 export class MapTooltip extends React.Component<MapTooltipProps> {
   private readonly element = React.createRef<HTMLDivElement>();
+  // The container and the point of the pointer in it, at its last move.
+  private pointer?: { container: HTMLElement; x: number; y: number };
 
   follow = (event: React.MouseEvent<HTMLElement>) => {
-    const tooltip = this.element.current;
-    if (!tooltip) return;
     const container = event.currentTarget;
     const bounds = container.getBoundingClientRect();
-    const x = event.clientX - bounds.left;
-    const y = event.clientY - bounds.top;
+    this.pointer = { container, x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+    this.place();
+  };
+
+  // The graph reports the node under the pointer after the move that reached
+  // it, so the tooltip shows its content, of another size, once it has been
+  // placed: it is placed again for it.
+  componentDidUpdate(prevProps: MapTooltipProps) {
+    if (prevProps.object !== this.props.object) this.place();
+  }
+
+  private place() {
+    const tooltip = this.element.current;
+    if (!tooltip || !this.pointer) return;
+    const { container, x, y } = this.pointer;
     const offset = 12;
     const left =
       x + offset + tooltip.offsetWidth > container.clientWidth ? x - offset - tooltip.offsetWidth : x + offset;
@@ -65,7 +78,7 @@ export class MapTooltip extends React.Component<MapTooltipProps> {
       y + offset + tooltip.offsetHeight > container.clientHeight ? y - offset - tooltip.offsetHeight : y + offset;
     tooltip.style.left = `${Math.max(0, left)}px`;
     tooltip.style.top = `${Math.max(0, top)}px`;
-  };
+  }
 
   render() {
     const { object } = this.props;

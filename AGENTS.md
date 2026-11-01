@@ -403,7 +403,10 @@ moves over the graph's container place without a render. That `div` is
 `resource-map-tooltip` and `pointer-events: none`: the container hands its mouse
 moves to `follow`, which keeps it in the container, on the side of the pointer
 where it fits, so that it never makes the content of a details drawer overflow,
-and `NodeTooltip` picks the tooltip of the kind. The tooltips take the theme's
+and `NodeTooltip` picks the tooltip of the kind. The graph reports the node
+under the pointer after the move that reached it, so the tooltip gets its
+content, and its size, after `follow` has placed it: `MapTooltip` places itself
+again, at the last point of the pointer, when it shows another node. The tooltips take the theme's
 colors: `--textColorSecondary` for their text, `--drawerItemNameColor` and
 `--drawerItemValueColor` for the names and values of a `DrawerItem`, and
 `--tooltipBackground`, `--borderColor` and `--textColorPrimary` for the box of
