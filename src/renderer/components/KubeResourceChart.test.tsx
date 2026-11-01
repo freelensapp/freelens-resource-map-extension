@@ -21,9 +21,13 @@ type KubeObject = Renderer.K8sApi.KubeObject;
 // A store of the host, as far as a details map uses it: whether it has
 // loaded, its items, its loads, and the subscriptions and watches it got. As
 // in the host, the function a subscription returns aborts its controller.
+// With `objects`, the objects of its kind in the cluster, a load puts those of
+// the namespaces of the filter in place of what it holds there, as the host's
+// loadAll does; without, a load leaves the items as they are.
 interface FakeStore {
   api: { kind: string };
   items: IObservableArray<KubeObject>;
+  objects?: KubeObject[];
   isLoaded: boolean;
   loads: number;
   subscriptions: number;
@@ -44,6 +48,11 @@ function fakeStore(kind: string): FakeStore {
     async loadAll(params) {
       store.loads++;
       if (params?.reqInit?.signal?.aborted) return undefined;
+      if (store.objects) {
+        const selected = (object: KubeObject) =>
+          host.selected.length === 0 || host.selected.includes(object.getNs() ?? "");
+        store.items.replace([...store.items.filter((item) => !selected(item)), ...store.objects.filter(selected)]);
+      }
       store.isLoaded = true;
       return store.items.slice();
     },
@@ -184,6 +193,40 @@ describe("KubeResourceChart", () => {
     },
   );
 
+  it("loads again a store that has loaded for an earlier selection, and draws the objects of the namespace selected since", async () => {
+    // The stores loaded shop, then the filter moved to billing while no view of the host followed them.
+    host.selected = ["billing"];
+    const webPod = (namespace: string) => pod(`web-${namespace}`, namespace, { labels: { app: "web" } });
+    const webService = (namespace: string) =>
+      kubeObject<Renderer.K8sApi.Service>(
+        "Service",
+        { name: "web", namespace },
+        { spec: { selector: { app: "web" } } },
+      );
+    const loadedFor = {
+      pods: webPod,
+      deployments: (ns: string) => deployment("web", ns, { app: "web" }),
+      services: webService,
+    };
+    for (const [key, make] of Object.entries(loadedFor)) {
+      const store = host.stores[key];
+      store.items.replace([make("shop")]);
+      store.objects = [make("shop"), make("billing")];
+    }
+    for (const store of stores()) store.isLoaded = true;
+
+    render(<KubePodChart object={webPod("billing")} />);
+
+    await waitFor(() =>
+      expect(linkIds()).toEqual([
+        "Deployment/billing/web -> Pod/billing/web-billing",
+        "Pod/billing/web-billing -> Service/billing/web",
+      ]),
+    );
+    expect(stores().map((store) => store.loads)).toEqual(stores().map(() => 1));
+    expect(apis().flatMap((api) => api.lists)).toEqual([]);
+  });
+
   it("builds the map again for a new instance of its object", async () => {
     const before = pod("web-1", "shop", { labels: { app: "web" } });
     host.stores.pods.items.replace([before]);
@@ -238,7 +281,7 @@ describe("KubeResourceChart", () => {
         await waitFor(() => expect(linkIds()).toEqual(stockLinks));
 
         expect(apis().map((api) => api.lists)).toEqual(apis().map(() => ["inventory"]));
-        expect(stores().map((store) => store.loads)).toEqual(stores().map(() => (loaded ? 0 : 1)));
+        expect(stores().map((store) => store.loads)).toEqual(stores().map(() => 1));
         expect(stores().map((store) => store.items.slice())).toEqual(
           stores().map((store) => (store === host.stores.deployments ? [object] : [])),
         );

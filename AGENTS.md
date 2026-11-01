@@ -274,9 +274,9 @@ panel draw the objects of the namespaces that the filter selects, a config map
 only when a pod links to it, a TLS secret only when a link reaches it, and a
 service account token secret only when a link other than a `secret` volume
 reaches it. A details map draws the objects related to its object in the
-object's namespace: those of the stores when they load that namespace, as they
-load the namespaces of the filter, and otherwise those that it lists itself
-("Data"). For a pod that no StatefulSet or DaemonSet owns, the Pod, Service and
+object's namespace: those of the stores when the filter selects that namespace,
+as the map loads the stores for the namespaces of the filter, and otherwise
+those that it lists itself ("Data"). For a pod that no StatefulSet or DaemonSet owns, the Pod, Service and
 Ingress maps take as its Deployment the first one of its namespace all of whose
 `matchLabels` the pod carries; `matchExpressions` are not read, and a Deployment
 without `matchLabels` takes no pod. In the workload and Pod maps, only the first
@@ -349,19 +349,25 @@ Silently"). The page and the panel follow the selection of the filter with one
 reaction, `namespaceStore.onContextChange` with `fireImmediately`, registered
 when they mount and disposed when they unmount: it keeps the namespaces it is
 given, which every build of the graph reads, and loads the stores again when
-they change. A build starts no reaction of its own. A details map loads only the
-stores that have not loaded yet (`isLoaded`) and watches them all, reacts to the
-pods and to the store of its object's kind, and follows a new `object` from the
-host in `componentDidUpdate`. It does not load again when the selection changes:
-it keeps the stores and the graph it has.
+they change. A build starts no reaction of its own. A details map loads every store
+when it mounts, as the page does, also one that has loaded already: a store
+holds and watches the namespaces of its last load, and the host loads it again
+for a new selection only while one of its own views follows it, so a store
+loaded for an earlier selection would hold none of the objects of a namespace
+selected since. The map watches them all, reacts to the pods and to the store
+of its object's kind, and follows a new `object` from the host in
+`componentDidUpdate`. It does not load again when the selection changes: it
+keeps the stores and the graph it has.
 
 The object of a details map can be in a namespace that the stores do not load,
 when the filter selects other namespaces: a pod opened from the details of its
 node, or a drawer opened from a link. Its map then lists the nine kinds in that
 namespace itself, with the host's APIs (`list({ namespace })`), alongside the
-loads of the stores, and shows its spinner until both are done. The stores load
-the namespaces that the filter selects, and every namespace when it selects
-none (`namespaceStore.areAllSelectedImplicitly`, then `hasContext`). The map
+loads of the stores, and shows its spinner until both are done. The map loads
+the stores for the namespaces that the filter selects, and for every namespace
+when it selects none, so it lists the namespace of its object when the filter
+does not select it (`namespaceStore.areAllSelectedImplicitly`, then
+`hasContext`). The map
 loads no store with that namespace: the stores are shared, and a `loadAll` with
 other namespaces would make them load and watch those in place of the
 selection, under the host's own views. The list has an `AbortController` of its
@@ -1068,7 +1074,10 @@ process:
   Deployment of `inventory`, which the selection leaves out, and checks that
   its map draws the objects of that namespace and that the stores of the
   Services and the ConfigMaps, which no host view loads there, hold none of
-  them. It clicks the node of a Deployment in the map of the Service and checks
+  them. It closes the drawer, selects `inventory` alone, which those stores
+  loaded for no selection, and opens the Deployment again: its map loads the
+  stores for the selection, draws the Service and the ConfigMap, and the stores
+  hold them. It clicks the node of a Deployment in the map of the Service and checks
   that the drawer shows the Deployment, still a second later, and the node of
   the Helm release in the map of its Deployment, which opens the release.
 

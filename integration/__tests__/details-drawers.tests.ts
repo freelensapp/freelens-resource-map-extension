@@ -180,6 +180,47 @@ describe.skipIf(!(await appReady({ cluster: true })))("details drawers tests", (
     expect(held).toEqual([]);
   });
 
+  it("draws the map of a Deployment of a namespace selected after the stores loaded others", async () => {
+    // The stores of the Services and the ConfigMaps loaded the test namespaces with the first drawers, and no
+    // view of the host follows them: once inventory alone is selected, they hold none of its objects until a map
+    // loads them for the selection. The drawer closes first, so that the map mounts again.
+    await frame.evaluate(() => globalThis.FreelensExtensionApi.Renderer?.Navigation.hideDetails());
+    await expect.poll(() => shownDetails(frame), viewTimeout).toBe(null);
+    await selectNamespacesInStore(frame, ["inventory"]);
+
+    const drawer = await openDetails(frame, stockDeployment);
+
+    await expect
+      .poll(async () => {
+        const nodes = await settledNodes(frame);
+        return [
+          ["Deployment", "stock"],
+          ["Pod", "stock-"],
+          ["Service", "stock"],
+          ["ConfigMap", "stock-config"],
+        ]
+          .filter(([kind, name]) => !has(nodes, kind, name, "inventory"))
+          .map(([kind, name]) => `${kind} ${name}`);
+      }, viewTimeout)
+      .toEqual([]);
+    expect(await drawer.locator('[class*="_errorPage_"]').count()).toBe(0);
+    // The map loaded the stores for the selection, so they hold the objects of inventory now.
+    const held = await frame.evaluate(() => {
+      const api = globalThis.FreelensExtensionApi.Renderer?.K8sApi;
+      const objects: { kind: string; getNs(): string | undefined; getName(): string }[] = [
+        ...(api?.serviceStore.items ?? []),
+        ...(api?.configMapStore.items ?? []),
+      ];
+      return objects
+        .filter((object) => object.getNs() === "inventory")
+        .map((object) => `${object.kind} ${object.getName()}`)
+        .sort();
+    });
+    expect(held).toEqual(expect.arrayContaining(["ConfigMap stock-config", "Service stock"]));
+
+    await selectNamespacesInStore(frame, testNamespaces);
+  });
+
   it("opens the object of a node clicked in a map, and stays open a second later", async () => {
     const { nodes } = await mapOfDetails(service);
     const deployment = nodes.find((node) => nodeKey(node) === "Deployment shop/web");

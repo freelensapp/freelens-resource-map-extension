@@ -42,7 +42,6 @@ interface State {
 
 /** What the map needs of a store of the host. */
 interface MapStore {
-  readonly isLoaded: boolean;
   readonly api: { readonly kind: string };
   loadAll(params?: Renderer.K8sApi.KubeObjectStoreLoadAllParams): Promise<unknown>;
   subscribe(params?: Renderer.K8sApi.KubeObjectStoreSubscribeParams): () => void;
@@ -57,8 +56,8 @@ interface MapApi<T extends KubeObject> {
 /** The objects of the kinds of the stores, as a details map lists them for a namespace; a kind whose list failed has none. */
 type MapObjects = Partial<Omit<DetailsGraphObjects, "childPods">>;
 
-// Whether the stores load the objects of a namespace: they load the namespaces
-// that the filter selects, and all of them when it selects none.
+// Whether the stores hold the objects of a namespace: a map loads them for the
+// namespaces that the filter selects, and for all of them when it selects none.
 function storesLoad(namespace: string) {
   const namespaceStore = getNamespaceStore();
   return namespaceStore.areAllSelectedImplicitly || namespaceStore.hasContext(namespace);
@@ -200,36 +199,36 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
   }
 
   /**
-   * Loads, one after the other, the stores that have not loaded yet, and
-   * watches every store, with one abort controller for the loads and the
-   * watches: the unmount aborts it, and a load that comes back aborted writes
-   * nothing. A list that fails reaches `onLoadFailure` and is logged as a
-   * warning, and the map draws the rest. Meanwhile it lists the namespace of
-   * the object, when the stores do not load it, and draws the map once both
-   * are done.
+   * Loads the stores one after the other, for the namespaces of the filter,
+   * as the page does, and watches each one, with one abort controller for the
+   * loads and the watches: the unmount aborts it, and a load that comes back
+   * aborted writes nothing. It loads a store that has loaded already too: a
+   * store holds and watches the namespaces of its last load, and the host
+   * loads it again for a new selection only while one of its own views
+   * follows it, so a store loaded for an earlier selection would hold none of
+   * the objects of a namespace selected since. A list that fails reaches
+   * `onLoadFailure` and is logged as a warning, and the map draws the rest.
+   * Meanwhile it lists the namespace of the object, when the filter does not
+   * select it, and draws the map once both are done.
    */
   private async load() {
     this.stopLoading();
     const controller = new AbortController();
     this.loading = controller;
-    // With every store loaded, the loop below reaches every subscribe with no
-    // await, and React.StrictMode unmounts the first mount at once: the abort
-    // would come while the host's subscribe waits for the namespaces of the
-    // store, which it logs as an error. One turn first lets that mount stop.
+    // React.StrictMode unmounts the first mount at once: one turn first lets
+    // that mount stop before it sends a request.
     await Promise.resolve();
     if (controller.signal.aborted) return;
     const listing = this.listNamespace();
     for (const key of this.listable) {
       const store: MapStore = this.stores[key];
-      if (!store.isLoaded) {
-        await store.loadAll({
-          reqInit: { signal: controller.signal },
-          onLoadFailure: (error) => {
-            Common.logger.warn(`${logPrefix}: cannot list the ${store.api.kind} objects`, error);
-          },
-        });
-        if (controller.signal.aborted) return;
-      }
+      await store.loadAll({
+        reqInit: { signal: controller.signal },
+        onLoadFailure: (error) => {
+          Common.logger.warn(`${logPrefix}: cannot list the ${store.api.kind} objects`, error);
+        },
+      });
+      if (controller.signal.aborted) return;
       this.watchDisposers.push(store.subscribe({ abortController: controller }));
     }
     await listing;
