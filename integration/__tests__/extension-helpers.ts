@@ -620,9 +620,12 @@ export async function countGraphInits(frame: Frame) {
     const scope = globalThis as unknown as { resourceMapGraphInits?: { most: number; observer: MutationObserver } };
     if (scope.resourceMapGraphInits) return;
     const inits = new WeakMap<Element, number>();
+    // A container that comes in with its element shows in two records, its element's and its own: each counts once.
+    const counted = new WeakSet<Element>();
     const count = (container: Element) => {
       const element = container.parentElement;
-      if (!element || !scope.resourceMapGraphInits) return;
+      if (!element || !scope.resourceMapGraphInits || counted.has(container)) return;
+      counted.add(container);
       const times = (inits.get(element) ?? 0) + 1;
       inits.set(element, times);
       scope.resourceMapGraphInits.most = Math.max(scope.resourceMapGraphInits.most, times);
