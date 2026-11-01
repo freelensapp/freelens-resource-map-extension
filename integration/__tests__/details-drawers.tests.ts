@@ -14,7 +14,9 @@ import {
   appReady,
   connectApp,
   connectKindCluster,
+  countGraphInits,
   disconnectKindCluster,
+  graphInitsPerElement,
   installExtension,
   mapOf,
   nodeKey,
@@ -64,6 +66,7 @@ describe.skipIf(!(await appReady({ cluster: true })))("details drawers tests", (
     await installExtension(session);
     await disconnectKindCluster(session);
     frame = await connectKindCluster(session);
+    await countGraphInits(frame);
     await selectNamespacesInStore(frame, testNamespaces);
   }, 300 * 1000);
 
@@ -244,6 +247,10 @@ describe.skipIf(!(await appReady({ cluster: true })))("details drawers tests", (
     await frame.page().mouse.click(point.x, point.y);
 
     await expect.poll(() => new URL(frame.url()).pathname, viewTimeout).toBe("/helm/releases/shop/catalog");
+  });
+
+  it("set up the graph of every map once", async () => {
+    expect(await graphInitsPerElement(frame)).toBe(1);
   });
 
   it("logs no error", () => {

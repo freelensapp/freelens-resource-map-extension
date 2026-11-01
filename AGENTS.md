@@ -1080,7 +1080,7 @@ process:
 - `workloads-overview.tests.ts` connects the kind cluster, which opens on the
   host's Cluster Overview, and opens Workloads > Overview. The two load pods,
   workloads, events and nodes, but no Services or Ingresses: the session checks
-  that the "Resources" panel draws them, that its map is 480 px high and as
+  that the "Resources" panel draws them, that its canvas is 480 px high and as
   wide as the panel, and one canvas.
 - `details-drawers.tests.ts` connects the kind cluster, which opens on the
   host's Cluster Overview, selects the test namespaces through the namespace
@@ -1100,9 +1100,13 @@ process:
   that the drawer shows the Deployment, still a second later, and the node of
   the Helm release in the map of its Deployment, which opens the release.
 
-One canvas in the container of a map shows that the guard of react-kapsule
-against the double mount of `React.StrictMode`, which Freelens dev renders in,
-holds. The test objects are the same Deployment, Service and ConfigMap in the
+`React.StrictMode`, which Freelens dev renders in, mounts every view twice, and
+the guard of react-kapsule keeps the graph from a second init. A second init
+would still leave one canvas: force-graph empties the element it is set up on
+and makes a new container in it at every init. So each session counts, with a
+`MutationObserver` in the cluster frame (`countGraphInits`), the containers
+that force-graph makes on each element, and checks one per element
+(`graphInitsPerElement`), besides one canvas per map. The test objects are the same Deployment, Service and ConfigMap in the
 namespaces `shop` and `billing`, an Ingress with a TLS secret and a service
 backend, one without rules, one whose rule has no `http` and one with a
 `resource` backend, a StatefulSet with its headless Service and a DaemonSet,
@@ -1170,9 +1174,10 @@ point of a node on the screen: its point on the canvas plus the position of the
 canvas, scrolled into view first, which Playwright gives in the coordinates of
 the page for an element of the cluster frame too. `selectNamespacesInStore`
 selects namespaces through the namespace store, for a view with no filter,
-`openDetails` opens the details of an object by its selfLink, and `podSelfLink`
+`openDetails` opens the details of an object by its selfLink, `podSelfLink`
 finds the selfLink of a pod in the host's store, since the names of pods end
-with a random suffix. The helpers wait with `until`, which, unlike
+with a random suffix, and `countGraphInits` and `graphInitsPerElement` count
+the inits of force-graph on each element. The helpers wait with `until`, which, unlike
 `expect.poll`, also runs in the hooks of a session. A session opens no page of
 the host whose requests log errors of their own: the Pods page asks for the pod
 metrics of the whole cluster, and kind has no metrics server. The drawers of a

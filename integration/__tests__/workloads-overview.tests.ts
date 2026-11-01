@@ -13,7 +13,9 @@ import {
   appReady,
   connectApp,
   connectKindCluster,
+  countGraphInits,
   disconnectKindCluster,
+  graphInitsPerElement,
   installExtension,
   mapOf,
   nodeKey,
@@ -38,6 +40,7 @@ describe.skipIf(!(await appReady({ cluster: true })))("workloads overview tests"
     await installExtension(session);
     await disconnectKindCluster(session);
     frame = await connectKindCluster(session);
+    await countGraphInits(frame);
     await openWorkloadsOverview(frame);
   }, 300 * 1000);
 
@@ -53,15 +56,17 @@ describe.skipIf(!(await appReady({ cluster: true })))("workloads overview tests"
       .toEqual(expect.arrayContaining(["Service shop/web", "Service billing/web", "Ingress shop/storefront"]));
   });
 
-  it("is 480 px high and as wide as the panel, with one canvas", async () => {
+  it("has a canvas 480 px high and as wide as the panel, on a graph set up once", async () => {
     const map = mapOf(frame);
-    const box = await map.boundingBox();
     const panel = await map.locator("..").boundingBox();
+    const canvas = await map.locator("canvas").boundingBox();
 
-    expect(box?.height).toBe(480);
-    expect(box?.width).toBe(panel?.width);
+    // The graph takes the size of its container, in whole pixels.
+    expect(canvas?.height).toBe(480);
+    expect(canvas?.width).toBe(Math.floor(panel?.width ?? 0));
     expect(await map.locator("canvas").count()).toBe(1);
     expect(await map.locator("canvas").isVisible()).toBe(true);
+    expect(await graphInitsPerElement(frame)).toBe(1);
   });
 
   it("logs no error", () => {

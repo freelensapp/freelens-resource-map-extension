@@ -11,7 +11,9 @@ import {
   appReady,
   connectApp,
   connectKindCluster,
+  countGraphInits,
   disconnectKindCluster,
+  graphInitsPerElement,
   installExtension,
   mapOf,
   nodeKey,
@@ -48,6 +50,7 @@ describe.skipIf(!(await appReady({ cluster: true })))("resource map page tests",
     await installExtension(session);
     await disconnectKindCluster(session);
     frame = await connectKindCluster(session);
+    await countGraphInits(frame);
     await openResourceMap(frame);
   }, 300 * 1000);
 
@@ -79,11 +82,12 @@ describe.skipIf(!(await appReady({ cluster: true })))("resource map page tests",
       );
   });
 
-  it("draws one canvas", async () => {
+  it("draws one canvas, on a graph set up once", async () => {
     const canvas = mapOf(frame).locator("canvas");
 
     expect(await canvas.count()).toBe(1);
     expect(await canvas.isVisible()).toBe(true);
+    expect(await graphInitsPerElement(frame)).toBe(1);
   });
 
   it("follows a change of the selection", async () => {

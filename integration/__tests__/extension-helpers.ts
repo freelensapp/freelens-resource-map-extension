@@ -607,6 +607,47 @@ export async function selectNamespaces(frame: Frame, namespaces: readonly string
   await input.press("Escape");
 }
 
+/**
+ * Counts, in the cluster frame, the inits of force-graph on each element. Its
+ * init empties the element and makes a new container in it, so a second init
+ * on the same element still leaves one canvas, and only this count shows it.
+ * React.StrictMode mounts every view twice, and the guard of react-kapsule
+ * keeps the graph from a second init. Call it once the session has the
+ * cluster frame, before it opens a view.
+ */
+export async function countGraphInits(frame: Frame) {
+  await frame.evaluate(() => {
+    const scope = globalThis as unknown as { resourceMapGraphInits?: { most: number; observer: MutationObserver } };
+    if (scope.resourceMapGraphInits) return;
+    const inits = new WeakMap<Element, number>();
+    const count = (container: Element) => {
+      const element = container.parentElement;
+      if (!element || !scope.resourceMapGraphInits) return;
+      const times = (inits.get(element) ?? 0) + 1;
+      inits.set(element, times);
+      scope.resourceMapGraphInits.most = Math.max(scope.resourceMapGraphInits.most, times);
+    };
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.classList.contains("force-graph-container")) count(node);
+          node.querySelectorAll(".force-graph-container").forEach(count);
+        }
+      }
+    });
+    scope.resourceMapGraphInits = { most: 0, observer };
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+}
+
+/** The most inits of force-graph on one element since `countGraphInits`: 1 while the guard holds. */
+export async function graphInitsPerElement(frame: Frame): Promise<number> {
+  return frame.evaluate(
+    () => (globalThis as unknown as { resourceMapGraphInits?: { most: number } }).resourceMapGraphInits?.most ?? 0,
+  );
+}
+
 /** The map of the open view: the container of the graph, with its hidden list of the nodes. */
 export function mapOf(frame: Frame): Locator {
   return frame.locator(':has(> [data-testid="resource-map-nodes"])');
