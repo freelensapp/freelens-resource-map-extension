@@ -173,7 +173,9 @@ export class KubeForceChart extends React.Component<object, State> {
    * controller for the loads and the watches: a new load or the unmount aborts
    * it, and a load that comes back aborted writes nothing. The host takes an
    * aborted load for no failure; a list that fails reaches `onLoadFailure` and
-   * is logged as a warning, and the map draws the rest.
+   * is logged as a warning, and the map draws the rest. The watches get the
+   * same handler: after a 410 Gone a watch lists its namespace again, and the
+   * host empties the shared store when that list fails without one.
    */
   private async load() {
     this.stopLoading();
@@ -181,17 +183,17 @@ export class KubeForceChart extends React.Component<object, State> {
     this.loading = controller;
     let totalItems = 0;
     for (const store of this.kubeObjectStores) {
-      const items = await store.loadAll({
-        reqInit: { signal: controller.signal },
-        onLoadFailure: (error) => {
-          Common.logger.warn(`${logPrefix}: cannot list the ${store.api.kind} objects`, error);
-        },
-      });
+      // A list that fails, the load's own or one that the watch sends again
+      // after the API server answered 410 Gone, is logged as a warning.
+      const onLoadFailure = (error: unknown) => {
+        Common.logger.warn(`${logPrefix}: cannot list the ${store.api.kind} objects`, error);
+      };
+      const items = await store.loadAll({ reqInit: { signal: controller.signal }, onLoadFailure });
       if (controller.signal.aborted) return;
       if (store.api.kind !== "ConfigMap") {
         totalItems += items?.length ?? 0;
       }
-      this.watchDisposers.push(store.subscribe({ abortController: controller }));
+      this.watchDisposers.push(store.subscribe({ abortController: controller, onLoadFailure }));
     }
     runInAction(() => {
       this.noResourcesFound = totalItems === 0;

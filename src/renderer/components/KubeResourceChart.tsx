@@ -207,7 +207,9 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
    * loads it again for a new selection only while one of its own views
    * follows it, so a store loaded for an earlier selection would hold none of
    * the objects of a namespace selected since. A list that fails reaches
-   * `onLoadFailure` and is logged as a warning, and the map draws the rest.
+   * `onLoadFailure` and is logged as a warning, and the map draws the rest;
+   * the watches get the same handler, for the list that a watch sends again
+   * after a 410 Gone, which empties the shared store when it fails without one.
    * Meanwhile it lists the namespace of the object, when the filter does not
    * select it, and draws the map once both are done.
    */
@@ -222,14 +224,14 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
     const listing = this.listNamespace();
     for (const key of this.listable) {
       const store: MapStore = this.stores[key];
-      await store.loadAll({
-        reqInit: { signal: controller.signal },
-        onLoadFailure: (error) => {
-          Common.logger.warn(`${logPrefix}: cannot list the ${store.api.kind} objects`, error);
-        },
-      });
+      // A list that fails, the load's own or one that the watch sends again
+      // after the API server answered 410 Gone, is logged as a warning.
+      const onLoadFailure = (error: unknown) => {
+        Common.logger.warn(`${logPrefix}: cannot list the ${store.api.kind} objects`, error);
+      };
+      await store.loadAll({ reqInit: { signal: controller.signal }, onLoadFailure });
       if (controller.signal.aborted) return;
-      this.watchDisposers.push(store.subscribe({ abortController: controller }));
+      this.watchDisposers.push(store.subscribe({ abortController: controller, onLoadFailure }));
     }
     await listing;
     if (controller.signal.aborted) return;

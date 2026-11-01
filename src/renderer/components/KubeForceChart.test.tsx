@@ -22,6 +22,8 @@ interface FakeStore {
   items: IObservableArray<KubeObject>;
   loads: number;
   watches: number;
+  // The handler of a failed list that the last watch got, which the host calls when a watch lists again.
+  watchFailure?: (error: unknown) => void;
   // When set, a load waits for it, and then fails with it when it is an error.
   pending?: Promise<Error | undefined>;
   loadAll(params?: Renderer.K8sApi.KubeObjectStoreLoadAllParams): Promise<KubeObject[] | undefined>;
@@ -48,6 +50,7 @@ function fakeStore(kind: string): FakeStore {
     subscribe(params) {
       const controller = params?.abortController ?? new AbortController();
       if (controller.signal.aborted) return () => {};
+      store.watchFailure = params?.onLoadFailure;
       store.watches++;
       controller.signal.addEventListener("abort", () => store.watches--, { once: true });
       return () => controller.abort();
@@ -354,6 +357,19 @@ describe("KubeForceChart", () => {
       new Error("Failed to load api/v1/secrets"),
     );
     expect(Common.logger.error).not.toHaveBeenCalled();
+  });
+
+  it("logs a list that a watch sends again and that fails as a warning", async () => {
+    host.stores.pods.items.replace([pod("web-1", "shop")]);
+    render(<KubeForceChart />);
+    await waitFor(() => expect(drawnIds()).toEqual(["Pod/shop/web-1"]));
+
+    host.stores.configMaps.watchFailure?.(new Error("Failed to load api/v1/configmaps"));
+
+    expect(Common.logger.warn).toHaveBeenCalledWith(
+      "[@freelensapp/resource-map-extension]: cannot list the ConfigMap objects",
+      new Error("Failed to load api/v1/configmaps"),
+    );
   });
 
   it("sets its forces on the graph once the graph has mounted", async () => {

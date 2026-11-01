@@ -32,6 +32,8 @@ interface FakeStore {
   loads: number;
   subscriptions: number;
   watches: number;
+  // The handler of a failed list that the last watch got, which the host calls when a watch lists again.
+  watchFailure?: (error: unknown) => void;
   loadAll(params?: Renderer.K8sApi.KubeObjectStoreLoadAllParams): Promise<KubeObject[] | undefined>;
   subscribe(params?: Renderer.K8sApi.KubeObjectStoreSubscribeParams): () => void;
   getChildPods(): Renderer.K8sApi.Pod[];
@@ -59,6 +61,7 @@ function fakeStore(kind: string): FakeStore {
     subscribe(params) {
       const controller = params?.abortController ?? new AbortController();
       if (controller.signal.aborted) return () => {};
+      store.watchFailure = params?.onLoadFailure;
       store.subscriptions++;
       store.watches++;
       controller.signal.addEventListener("abort", () => store.watches--, { once: true });
@@ -225,6 +228,20 @@ describe("KubeResourceChart", () => {
     );
     expect(stores().map((store) => store.loads)).toEqual(stores().map(() => 1));
     expect(apis().flatMap((api) => api.lists)).toEqual([]);
+  });
+
+  it("logs a list that a watch sends again and that fails as a warning", async () => {
+    const web1 = pod("web-1", "shop");
+    host.stores.pods.items.replace([web1]);
+    render(<KubePodChart object={web1} />);
+    await waitFor(() => expect(graph.props?.graphData.nodes.map((node) => node.id)).toEqual(["Pod/shop/web-1"]));
+
+    host.stores.configMaps.watchFailure?.(new Error("Failed to load api/v1/configmaps"));
+
+    expect(Common.logger.warn).toHaveBeenCalledWith(
+      "[@freelensapp/resource-map-extension]: cannot list the ConfigMap objects",
+      new Error("Failed to load api/v1/configmaps"),
+    );
   });
 
   it("builds the map again for a new instance of its object", async () => {

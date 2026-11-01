@@ -341,7 +341,11 @@ abortController })`). A new load of the page or the panel, when the selection
 changes, and `componentWillUnmount` abort it, and a load that comes back aborted
 writes nothing and starts no watch, so `React.StrictMode` leaves one load and
 one watch per store. A list that fails reaches `onLoadFailure`, which logs a
-warning, and the map draws the other kinds. A `reaction` per store, on
+warning, and the map draws the other kinds. The watches get the same handler
+(`subscribe({ abortController, onLoadFailure })`): when the API server answers a
+watch with 410 Gone, the store lists the namespace again by itself, and a list
+that fails there without the handler empties the store, which the host's own
+views share. A `reaction` per store, on
 `store.items.toJSON()` compared with `compareStructural`, builds the graph again
 when the store changes; `toJSON()` reads every item and returns a new array, so
 the reaction sees the objects that the host replaces in place ("Rules That Fail
