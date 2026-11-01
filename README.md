@@ -230,9 +230,7 @@ pnpm build
 
 ## License
 
-This project is licensed under the MIT License.  
-Original work © [Lauri Nevala](https://github.com/nevalla) [ [kube-resource-map](https://github.com/nevalla/lens-resource-map-extension) ]
+Copyright (c) 2021 [Lauri Nevala](https://github.com/nevalla), 2025-2026
+[Yasmine Gharbi](https://github.com/GHARBIyasmine) and 2026 Freelens Authors.
 
-Freelens adaptation and initial update © 2025-2026 [Yasmine Gharbi](https://github.com/GHARBIyasmine)
-
-Maintained collaboratively under the [Freelens](https://github.com/freelensapp) organization.
+[MIT License](LICENSE)
