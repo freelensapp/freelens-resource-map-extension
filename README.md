@@ -1,35 +1,79 @@
 # @freelensapp/resource-map-extension
 
 [![Home](https://img.shields.io/badge/%F0%9F%8F%A0-freelens.app-02a7a0)](https://freelens.app)
-[![GitHub](https://img.shields.io/github/stars/freelensapp/freelens?style=flat&label=GitHub%20%E2%AD%90)](https://github.com/freelensapp/freelens)
-[![Release](https://img.shields.io/github/v/release/freelensapp/freelens-resource-map-extension?display_name=tag&sort=semver)](https://github.com/freelensapp/freelens-resource-map-extension)
+[![GitHub](https://img.shields.io/github/stars/freelensapp/freelens-resource-map-extension?style=flat&label=GitHub%20%E2%AD%90)](https://github.com/freelensapp/freelens-resource-map-extension)
+[![Release](https://img.shields.io/github/v/release/freelensapp/freelens-resource-map-extension?display_name=tag&sort=semver)](https://github.com/freelensapp/freelens-resource-map-extension/releases)
+[![Unit tests](https://github.com/freelensapp/freelens-resource-map-extension/actions/workflows/unit-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-resource-map-extension/actions/workflows/unit-tests.yaml)
 [![Integration tests](https://github.com/freelensapp/freelens-resource-map-extension/actions/workflows/integration-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-resource-map-extension/actions/workflows/integration-tests.yaml)
+[![npm](https://img.shields.io/npm/v/@freelensapp/resource-map-extension.svg)](https://www.npmjs.com/package/@freelensapp/resource-map-extension)
 
+## Overview
 
-## Overview 
+[Freelens](https://freelens.app) extension that draws the resources of a
+Kubernetes cluster, and the links between them, as a live graph: the pods,
+the workloads that run them, the Services in front of them and the Ingresses
+in front of those, the ConfigMaps, Secrets and PersistentVolumeClaims that
+the pods use, and the Helm releases that installed them. The graph follows
+the cluster while it is open, and a click on a node opens its object in
+Freelens.
 
-The following is a description from the original repo :
+The graph is in three places: the **Resource Map** page of the cluster
+sidebar, for the namespaces that the namespace filter selects; the
+**Resources** panel of **Workloads** > **Overview**; and a map of the objects
+related to one object in the details of a Deployment, DaemonSet, StatefulSet,
+Pod, Service or Ingress. The extension reads the cluster through the stores
+of Freelens and its connection to the cluster, and changes nothing in it:
+every request it makes is a list or a watch.
 
-"Lens Resource Map is an extension for [Lens - The Kubernetes IDE](https://k8slens.dev) that displays Kubernetes resources and their relations as a real-time force-directed graph."
+[Video Demo](https://github.com/user-attachments/assets/d9713d0b-e324-4cf8-8b6d-44a89d5374e8)
 
-![Resource map screenshot](./images/Screenshot.png)
+![The Resource Map page: the objects of two namespaces and their links, with a failed pod in red, a Helm release and an Ingress with its TLS Secret, dark theme](images/page-dark.png)
 
+![The tooltip of a Deployment on the Resource Map page, dark theme](images/tooltip-dark.png)
 
-## Features
+![The details of a Deployment, with the map of its pods, the ConfigMap and the Secret they use, its Service, and the Ingress in front of it with its TLS Secret, dark theme](images/drawer-deployment-dark.png)
 
-- Interactive graph visualization of Kubernetes resources
-- Resource relationship mapping (pods, services, deployments, etc.)
-- Namespace filtering
-- Visual indicators for resource status and health
-- Click navigation to resource details
-- Access the resource map from its own dedicated tab or directly within the cluster's workload overview
-- See a focused mini-map of related resources when viewing details of a specific resource
+![The Resources panel of the Workloads Overview, dark theme](images/overview-dark.png)
+
+### Authors
+
+- [Lauri Nevala](https://github.com/nevalla) created the extension.
+- [Yasmine Gharbi](https://github.com/GHARBIyasmine) adapted and updated it
+  for Freelens, and maintains it.
+- [Omar Alani](https://github.com/omarluq) moved it to pnpm and automated its
+  releases in
+  [#5](https://github.com/freelensapp/freelens-resource-map-extension/pull/5).
+- The Freelens team ported it to the extension API of Freelens 2 in
+  [#43](https://github.com/freelensapp/freelens-resource-map-extension/pull/43).
 
 ## Requirements
 
 - Freelens 2.0.0 or a later 2.x (extension API v2). Freelens 1.6 or a later
   1.x needs version 1.0.2 of the extension.
 - Kubernetes >= 1.24
+- Permission to list and watch, in the namespaces to draw, the kinds of
+  [Supported resources](#supported-resources). A kind that the user may not
+  list is left out, and the maps draw the others (see [Limits](#limits)).
+
+## Supported resources
+
+| Resource                | API version            | Linked to                                                  |
+| ----------------------- | ---------------------- | ---------------------------------------------------------- |
+| `Pod`                   | `v1`                   | the ConfigMaps, Secrets and PersistentVolumeClaims it uses |
+| `Deployment`            | `apps/v1`              | its pods and its Helm release                              |
+| `StatefulSet`           | `apps/v1`              | its pods and its Helm release                              |
+| `DaemonSet`             | `apps/v1`              | its pods and its Helm release                              |
+| `Service`               | `v1`                   | the pods that its selector matches                         |
+| `Ingress`               | `networking.k8s.io/v1` | the Services of its backends and its TLS Secrets           |
+| `PersistentVolumeClaim` | `v1`                   |                                                            |
+| `ConfigMap`             | `v1`                   |                                                            |
+| `Secret`                | `v1`                   | its Helm release, for a release Secret                     |
+
+A pod uses a ConfigMap or a Secret that its containers read with `envFrom`, a
+Secret that they read with a `secretKeyRef`, and a ConfigMap, a Secret or a
+PersistentVolumeClaim that it mounts as a volume. A Helm release is no object
+of the cluster: the maps know it from the labels and annotations that Helm
+sets on the objects it installs, and from its release Secrets.
 
 ## Install
 
@@ -66,6 +110,91 @@ directory with `package.json`, and press Install. Freelens runs the extension
 from that directory, from the files in `dist/`, and lists it as unverified.
 This is how you work on the extension: see
 [Development loop](#development-loop).
+
+## Getting started
+
+1. Connect Freelens to a cluster and select **Resource Map** in its sidebar.
+2. Select the namespaces to draw in the namespace filter at the top right.
+   Freelens keeps the selection for every list of the cluster.
+3. Hover a node to see its object, and click it to open its details, where
+   **Resources** holds a map of the objects related to it.
+
+## Features
+
+### The Resource Map page
+
+The page draws the objects of the namespaces that the namespace filter
+selects, and the links between them. A ConfigMap is drawn only when a pod
+uses it, a TLS Secret only when an Ingress names it, and the token Secret of
+a service account only when something other than a volume points to it. The
+info icon next to the title shows the legend, with the icon and the name of
+every kind.
+
+The graph is force-directed: linked objects pull together, and the others
+push apart. Scroll to zoom, drag the background to pan, and drag a node to
+move it.
+
+### The Workloads Overview panel
+
+**Workloads** > **Overview** has a **Resources** panel with the same graph,
+for the same namespaces, next to the other panels of the overview.
+
+### The maps in the details
+
+The details of an object of these kinds have a map of the objects related to
+it in its namespace, under **Resources**:
+
+- a Deployment, a DaemonSet or a StatefulSet: its pods, with their Secrets,
+  ConfigMaps and claims, its Helm release, the Services that select the pods,
+  and the first Ingress in front of those Services;
+- a Pod: its Secrets, ConfigMaps and claims, the Services that select it, its
+  controller with its Helm release, and the first Ingress in front of those
+  Services;
+- a Service: the pods it selects, with the other Services that select them
+  and their controllers, and the Ingresses whose backends name it;
+- an Ingress: its TLS Secrets, the Services of its backends, and the pods
+  they select, with the other Services that select them and their
+  controllers.
+
+The map is there also when the namespace filter does not select the
+namespace of the object, as for a pod opened from a link: the map then lists
+that namespace itself.
+
+### Live, and linked to Freelens
+
+- The maps follow the cluster: a new pod, a deleted object or a pod that
+  fails shows on the graph without a reload.
+- Every kind has its color and icon. Deployments, StatefulSets and DaemonSets
+  have an outer ring, and a pod takes the color of its phase: green when it
+  runs or has succeeded, grey while it terminates, dark while it is pending,
+  red when it has failed.
+- Hovering a node shows a tooltip with its object, such as the selector and
+  the replicas of a Deployment, the status and the containers of a pod, or
+  the hosts, paths and backends of an Ingress, and draws its links thicker.
+- A click on a node opens the details of its object in Freelens, and a click
+  on a Helm release opens the release under **Helm** > **Releases**.
+
+## Limits
+
+- Some references give no link: a `configMapKeyRef`, a projected volume, an
+  init container and the default backend of an Ingress
+  (`spec.defaultBackend`). An Ingress with only a default backend links to
+  nothing.
+- In the maps of a Service and of an Ingress, a pod links to no ConfigMap,
+  Secret or claim.
+- In the maps of a pod, a Service and an Ingress, a pod that no StatefulSet
+  or DaemonSet owns gets as its Deployment the first one of its namespace
+  whose `matchLabels` it carries all; `matchExpressions` are not read.
+- In the maps of a workload and of a pod, only the first Ingress in front of
+  their Services gets a node, and the links of the later ones start from it.
+- A pod takes the color of its phase, so a pod whose containers restart in a
+  loop is still running, and stays green.
+- A user who may not list a kind gets maps without it. With the `view` role
+  of Kubernetes, which reads no Secret, the maps have no Secrets, and a Helm
+  release is known only from the labels and annotations of its workloads.
+- On the page and in the panel, the message "No visualizable resources found
+  in this namespace." stays until the selection changes, also when objects
+  are created in those namespaces in the meantime.
 
 ## Build from the source
 
