@@ -8,10 +8,12 @@ import { childPodsOf, type DetailsGraph, type DetailsGraphObjects } from "./help
 import { ElementSize } from "./helpers/element-size";
 import {
   applyMapForces,
+  fitGraph,
   type GraphMethods,
   type NodePoint,
   nodePointsOf,
   refWithSetter,
+  smallGraphZoom,
 } from "./helpers/graph-methods";
 import { getHelmReleasePath, helmReleaseKind } from "./helpers/helm";
 import { sameGraph } from "./helpers/namespace-graph";
@@ -94,6 +96,9 @@ const storeOfKind: Partial<Record<string, keyof MapStores>> = {
 };
 
 const logPrefix = "[@freelensapp/resource-map-extension]";
+
+// The largest zoom of a details map, whose canvas is 400 px high.
+const maxZoom = 1.2;
 
 /**
  * The map in the details panel of an object: the objects around it in its
@@ -504,18 +509,18 @@ export class KubeResourceChart<K extends KubeObject = KubeObject> extends React.
             width={this.size.width}
             height={this.size.height}
             autoPauseRedraw={false}
-            maxZoom={1.2}
+            maxZoom={maxZoom}
             cooldownTicks={200}
             onEngineStop={() => {
               if (this.initZoomDone) {
                 this.settle();
               } else if (this.nodes.length > 10) {
                 this.initZoomDone = true;
-                this.chart?.zoomToFit(400);
+                fitGraph(this.chart, this.size, maxZoom, 400);
                 this.settleTimer = setTimeout(() => this.settle(), 400);
               } else {
                 this.initZoomDone = true;
-                this.chart?.zoom(1.2);
+                fitGraph(this.chart, this.size, smallGraphZoom, 0);
                 this.settle();
               }
             }}

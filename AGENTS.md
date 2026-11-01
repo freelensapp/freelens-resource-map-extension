@@ -313,6 +313,19 @@ previous graph. A details map builds its graph in the same way, around its
 object and in its namespace, with the builder of its kind. Its node id is the
 kind, the namespace and the name of its object as well.
 
+When its simulation first stops, a graph fits its nodes to its canvas
+(`fitGraph` of `helpers/graph-methods.ts`): it centers the view on the box of
+the nodes, and zooms so that the box, with a margin of 32 px (`fitPadding`),
+fills the canvas. The box that force-graph gives holds the circles of the
+nodes, and the names below the nodes of the bottom row reach up to 20 px past
+it. The zoom goes no further than the `maxZoom` of the graph, 2 on the page
+and in the panel and 1.2 in a details map, nor further than 1.2 for a graph of
+ten nodes or fewer (`smallGraphZoom`), which would otherwise fill the canvas.
+force-graph's own `zoomToFit` keeps 10 px around the box, which cut the names
+of the bottom row, and a graph zoomed to a fixed scale can reach past its
+canvas, as the chain of a workload, its Service, an Ingress and its TLS secret
+does in the 400 px of a details map.
+
 When a graph stops after its first zoom (`onEngineStop`), its map marks its
 container with `data-settled` and fills a visually hidden list,
 `data-testid="resource-map-nodes"` (`MapNodeList` of `map-node-list.tsx`),

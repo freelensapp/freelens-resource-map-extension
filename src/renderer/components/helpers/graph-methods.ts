@@ -24,6 +24,44 @@ export function applyMapForces(graph: GraphMethods) {
 }
 
 /**
+ * The margin, in px, that a map keeps around its nodes when it fits its graph
+ * to the canvas. The box of the nodes that force-graph gives holds their
+ * circles, and a map draws the name of a node below its circle, 10 px under it
+ * in a font that the zoom scales: the names of the bottom row reach up to 20 px
+ * past the box.
+ */
+export const fitPadding = 32;
+
+/** The largest zoom of the fit of a graph of ten nodes or fewer, which would otherwise fill the canvas. */
+export const smallGraphZoom = 1.2;
+
+/**
+ * Fits a graph to its canvas: centers the view on the box of its nodes, and
+ * zooms so that the box, with `fitPadding` around it, fills the canvas, up to
+ * `maxZoom`. force-graph's `zoomToFit` keeps 10 px around the box, which cut
+ * the names of the bottom row, and takes no largest zoom: on a small graph it
+ * zooms in as far as the `maxZoom` of the graph.
+ */
+export function fitGraph(
+  graph: GraphMethods | undefined,
+  size: { width: number; height: number },
+  maxZoom: number,
+  durationMs: number,
+) {
+  const box = graph?.getGraphBbox();
+  if (!graph || !box || size.width <= 2 * fitPadding || size.height <= 2 * fitPadding) return;
+  const [left, right] = box.x;
+  const [top, bottom] = box.y;
+  const zoom = Math.min(
+    maxZoom,
+    (size.width - 2 * fitPadding) / Math.max(1, right - left),
+    (size.height - 2 * fitPadding) / Math.max(1, bottom - top),
+  );
+  graph.centerAt((left + right) / 2, (top + bottom) / 2, durationMs);
+  graph.zoom(zoom, durationMs);
+}
+
+/**
  * A ref object that hands to `onSet` what React puts in it, `null` included:
  * `react-force-graph-2d` takes no callback ref, and a map sets the forces of
  * its graph once the graph has put its methods there.
