@@ -184,7 +184,7 @@ environment-tests/                                # Probes for the per-environme
 build/                                            # Vite plugins: host modules, decorators, CSS module declarations
 integration/__tests__/                            # Integration tests against Freelens dev over CDP, and their helpers
 integration/fixtures/                             # Test objects and local Helm chart of the integration tests
-images/                                           # The screenshot that README.md shows
+images/                                           # The screenshots that README.md shows
 ```
 
 Build output goes to `dist/`: `main.js`, `renderer.js` and `renderer.css`, with
