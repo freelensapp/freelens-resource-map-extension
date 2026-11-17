@@ -77,7 +77,7 @@
     "clean:all": "pnpm \"/^clean:(dist|dts|node_modules|tgz)\\$/\""
   },
   "dependencies": {
-    "d3-force": "^3.0.0",
+    "d3-force": "^3.0.1",
     "react-force-graph-2d": "^1.29.2"
   },
   "devDependencies": {
